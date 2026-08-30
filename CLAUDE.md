@@ -123,7 +123,7 @@ Derived results must be explicitly discarded when an input that affects them cha
 
 ### Data validation
 
-`app.py` runs `required_cols()`, `validate_core_numeric_columns`, and `validate_cumulative_share_columns` after loading and calls `st.stop()` on failure. `api.py` currently skips these checks — Phase 0 adds them to the lifespan so the API refuses to start on bad data.
+`app.py` runs `required_cols()`, `validate_core_numeric_columns`, and `validate_cumulative_share_columns` after loading and calls `st.stop()` on failure. `api.py` runs the same three checks in `validate_calibration` at lifespan and raises `RuntimeError` so uvicorn refuses to start on bad data.
 
 ## Web conventions (from Phase 2)
 
@@ -141,9 +141,9 @@ Derived results must be explicitly discarded when an input that affects them cha
 - After a run: append the run id and gate result to `MIGRATION.md` §9. Do not start the next phase without a human review of the gate and review output.
 - Golden fixtures are regenerated only with an explicit note in §9 explaining why the numbers were allowed to change.
 
-## Known issue (fixed in Phase 0)
+## Tests
 
-`api.py:51` imports `build_options` from `sae_app.program_options`, but that function does not exist (the module exports `build_program_mapping`, which returns only the mapping, not the `(options, mapping)` tuple `api.py:77` unpacks). The FastAPI app fails at import until this is reconciled.
+`tests/golden_runner.py` is the single implementation of "drive the engine the way `app.py` / `ui_recommendations.py` do" and is shared by `tests/generate_golden.py` and the golden tests. When the engine's calling convention changes (Phase 1: explicit `lang`, `CandidateRiskCache`), update the runner — never the fixtures. Regenerating `tests/fixtures/golden/` requires a note in `MIGRATION.md` §9 in the same commit (see the README there).
 
 ## Privacy constraints in the code
 

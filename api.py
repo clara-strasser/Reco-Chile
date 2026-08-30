@@ -40,7 +40,13 @@ from sae_app.constants import (
     TRUE_APP,
     WISH_RANK,
 )
-from sae_app.data_loading import available_regions, load_calibration
+from sae_app.data_loading import (
+    available_regions,
+    load_calibration,
+    required_cols,
+    validate_core_numeric_columns,
+    validate_cumulative_share_columns,
+)
 from sae_app.errors import MtbEngineError
 from sae_app.i18n import t
 from sae_app.mtb_engine import (
@@ -48,7 +54,7 @@ from sae_app.mtb_engine import (
     normalize_student_identifier,
     precompute_equivalence_availability,
 )
-from sae_app.program_options import build_options
+from sae_app.program_options import build_program_mapping
 from sae_app.wish_list import (
     count_equivalence_orders,
     iter_equivalence_orders,
@@ -59,22 +65,71 @@ from sae_app.wish_list import (
 
 STATE: dict = {}
 
+# How many individual problems a startup validation failure spells out before
+# it stops and reports the remainder as a count.
+MAX_REPORTED_VALIDATION_PROBLEMS = 10
 
-def _error_detail(error_key: str, message: str) -> dict:
-    return {"error_key": error_key, "message": message}
+
+def _error_detail(error_key: str, message: str, params: dict | None = None) -> dict:
+    return {"error_key": error_key, "message": message, "params": params or {}}
 
 
 def _engine_error(exc: MtbEngineError) -> HTTPException:
     return HTTPException(
         status_code=422,
-        detail=_error_detail(exc.message_key, t(exc.message_key, **exc.message_kwargs)),
+        detail=_error_detail(
+            exc.message_key,
+            t(exc.message_key, **exc.message_kwargs),
+            exc.message_kwargs,
+        ),
     )
+
+
+def _validation_failure(headline: str, problems: list[str]) -> RuntimeError:
+    """Build a RuntimeError listing the first few problems, then the count."""
+    shown = problems[:MAX_REPORTED_VALIDATION_PROBLEMS]
+    remaining = len(problems) - len(shown)
+    lines = [headline, *(f"  - {problem}" for problem in shown)]
+    if remaining > 0:
+        lines.append(f"  ... and {remaining} more problem(s).")
+    return RuntimeError("\n".join(lines))
+
+
+def validate_calibration(calib: pd.DataFrame) -> None:
+    """Run the same three startup checks app.py runs, but fail hard.
+
+    Streamlit shows the problems and calls st.stop(); a headless API has no
+    such surface, so an invalid dataset must stop uvicorn from starting
+    rather than let it serve probabilities computed from bad data.
+    """
+    missing = [column for column in required_cols() if column not in calib.columns]
+    if missing:
+        raise _validation_failure(
+            "Calibration data is missing required column(s).", missing
+        )
+
+    numeric_errors = validate_core_numeric_columns(calib)
+    if numeric_errors:
+        raise _validation_failure(
+            "Calibration numeric columns contain invalid values. "
+            "Check the calibration CSV before starting the API.",
+            numeric_errors,
+        )
+
+    cumulative_share_errors = validate_cumulative_share_columns(calib)
+    if cumulative_share_errors:
+        raise _validation_failure(
+            "Calibration cumulative-share columns are inconsistent or incomplete. "
+            "Check the calibration CSV before starting the API.",
+            cumulative_share_errors,
+        )
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     calib = load_calibration(CAPACITIES_PATH.read_bytes())
-    program_options, program_mapping = build_options(calib)
+    validate_calibration(calib)
+    program_mapping = build_program_mapping(calib)
 
     id_to_label: dict[str, str] = {}
     label_to_id: dict[str, str] = {}

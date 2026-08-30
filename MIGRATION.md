@@ -1,6 +1,6 @@
 # Migration: Streamlit → Next.js + shadcn/ui
 
-Status: **planned, not started**. This document is the single source of truth
+Status: **in progress** — Phase 0 done; see §9. This document is the single source of truth
 for the migration. It is written so that each phase can be handed to an
 autonomous agent (Opus 5) as one well-scoped unit of work, with a verifiable
 gate before the next phase starts.
@@ -79,10 +79,9 @@ Streamlit-free already: `constants`, `errors`, `text_utils`, `mtb_engine`,
 
 ### 1.3 Known defects to fix first
 
-- `api.py:51` imports `build_options` which does not exist → the API does
-  not start. Replace with `build_program_mapping(calib)`.
-- `api.py` skips the startup validations `app.py` runs (`required_cols`,
-  `validate_core_numeric_columns`, `validate_cumulative_share_columns`).
+- ~~`api.py:51` imports `build_options` which does not exist~~ — fixed in Phase 0.
+- ~~`api.py` skips the startup validations `app.py` runs~~ — fixed in Phase 0
+  (`validate_calibration` raises `RuntimeError` at lifespan).
 - `api.py` only exposes `/regions`, `/programs` (region + free text) and
   `/simulate`. No filters, no recommendations, no geocoding, no thresholds.
 - No tests anywhere. Parity cannot be proven without them.
@@ -320,8 +319,9 @@ Parity means: same inputs → same numbers as the Streamlit prototype at commit
    the *current* engine for a fixed set of scenarios and writes JSON:
    - 6 strict lists (1, 3, 8, 12 wishes; with/without each priority flag;
      one with an imputed program; one with a zero-capacity program)
-   - 4 equivalence lists (2 tied, two groups of 3, a 4! group, one at
-     exactly the 10,000 cap and one above it)
+   - 4 equivalence lists (2 tied, two groups of 3, a 4! group, one above the
+     10,000 cap; "exactly at the cap" is unreachable because order counts are
+     products of factorials)
    - 3 recommendation scenarios (no home; home with `precision="address"`;
      home with city-level precision) using a fixed fake geocode result — no
      network in tests
@@ -562,7 +562,7 @@ Operating rules:
 
 | Phase | Started | Run id | Gate result | Notes |
 | --- | --- | --- | --- | --- |
-| 0 | – | – | – | |
+| 0 | 2026-08-30 | `wf_9a779ad6-209` | green — 59 pytest, `/simulate` reproduces goldens to 1e-12 over HTTP | 2 impl agents (no worktrees, disjoint files), 1 review round with 1 must-fix (all 4 priority tiers now frozen); fixtures generated for the first time — 18 scenarios. Error body still nested under `detail` → Phase 1. |
 | 1 | – | – | – | |
 | 2 | – | – | – | |
 | 3 | – | – | – | |
