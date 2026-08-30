@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import en from "@/messages/en.json";
-import es from "@/messages/es.json";
+import en from "@/messages/en";
+import es from "@/messages/es";
 import { routing } from "@/i18n/routing";
 
 /**
- * Contract for `messages/{es,en}.json` (MIGRATION.md §4.3).
+ * Contract for `messages/{es,en}/*.json` (MIGRATION.md §4.3).
  *
  * Key scheme:
  * - `app`, `steps`, `student`, `list`, `result`, `improve` hold UI copy under

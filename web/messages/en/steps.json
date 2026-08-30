@@ -1,0 +1,10 @@
+{
+  "student": "Identify the student",
+  "list": "Build the list",
+  "result": "Review the result",
+  "improve": "Improve the list",
+  "back": "Back",
+  "continue": "Continue",
+  "progress": "Step {current} of {total}",
+  "locked": "Complete the previous steps to continue."
+}

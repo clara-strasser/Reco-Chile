@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import en from "@/messages/en.json";
-import es from "@/messages/es.json";
+import en from "@/messages/en";
+import es from "@/messages/es";
 
 import {
   STEP_LABEL_KEY,

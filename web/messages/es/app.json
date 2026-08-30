@@ -1,0 +1,17 @@
+{
+  "title": "Revisa el riesgo de tu lista de preferencias SAE",
+  "tagline": "Agrega las preferencias del estudiante y estima el riesgo de quedar sin asignación. Esta herramienta de investigación apoya la decisión; no reemplaza ni envía la postulación oficial SAE.",
+  "simulationName": "Simulación de riesgo de admisión SAE",
+  "languageLabel": "Idioma",
+  "language": {
+    "es": "Español",
+    "en": "English"
+  },
+  "yes": "Sí",
+  "no": "No",
+  "aboutEstimate": {
+    "title": "Acerca de esta estimación",
+    "body": "El modelo usa datos históricos de calibración 2024 y datos de cupos 2025. Los resultados son estimaciones, no garantías oficiales de admisión.",
+    "mtbMode": "Modo MTB (admisión 2026): percentil SHA-256(RUN/IPE+RBD) por establecimiento. Los resultados son estimaciones basadas en la calibración del año anterior; no son garantías oficiales de admisión."
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "student": "Identificar al estudiante",
+  "list": "Armar la lista",
+  "result": "Revisar el resultado",
+  "improve": "Mejorar la lista",
+  "back": "Atrás",
+  "continue": "Continuar",
+  "progress": "Paso {current} de {total}",
+  "locked": "Completa los pasos anteriores para continuar."
+}

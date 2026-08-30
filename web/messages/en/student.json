@@ -1,0 +1,27 @@
+{
+  "title": "1. Identify the student",
+  "idLabel": "Student RUN/IPE",
+  "idPlaceholder": "12.345.678-5 / 111222333-4",
+  "idHelp": "Enter a valid RUN with its modulo-11 check digit, or a nine-digit IPE with its numeric verifier digit. Dots and the hyphen are optional.",
+  "idHelpLong": "Used to compute the SHA-256 percentile specific to each school. Enter a valid RUN with its modulo-11 check digit, or a nine-digit IPE with its numeric verifier digit. Dots and the hyphen are optional.",
+  "idValid": "Valid format.",
+  "idRequiredHint": "Enter the student's RUN/IPE to unlock the analysis.",
+  "why": {
+    "title": "Why do we ask for this?",
+    "body": "The identifier is used to reproduce the school-specific MTB tie-break calculation. It does not change or submit the student's official SAE application.",
+    "privacy": "The calculation takes place in this application. A home address is sent to OpenStreetMap only if the family later chooses to geocode it for recommendation distances."
+  },
+  "situationTitle": "Start from the family's current situation",
+  "listStatus": {
+    "label": "Is the student's wish list already established?",
+    "yes": "Yes — review my list",
+    "no": "No — help me build it"
+  },
+  "ties": {
+    "label": "I have not yet decided the exact order between some programs",
+    "help": "Use this planning option to compare possible orders. The family should still choose the order it genuinely prefers before submitting the official application.",
+    "info": "Give the same preference-group number to programs the family currently considers tied. The app will compare every compatible order, but this exploratory grouping is not submitted to SAE.",
+    "strictLabel": "Strict ranking",
+    "equivalenceLabel": "Equivalence classes"
+  }
+}

@@ -10,9 +10,9 @@ writes two *source* files that are never loaded by the app:
     web/messages/_source.es.json   English source string -> Spanish translation
     web/messages/_source.en.json   English source string -> English text
 
-They exist so that hand-authoring ``messages/es.json`` cannot silently lose a
+They exist so that hand-authoring ``messages/es/*.json`` cannot silently lose a
 Spanish sentence the prototype already had: every Spanish string in
-``es.json`` should be copy-pasted from ``_source.es.json`` whenever the
+``es/*.json`` should be copy-pasted from ``_source.es.json`` whenever the
 prototype has an equivalent, and ``check`` mode below tells you which source
 sentences are still unused.
 
@@ -23,7 +23,7 @@ the engine — see CLAUDE.md, "Python version")::
     /Users/clarastrasser/Reco-Chile/.venv/bin/python web/scripts/extract-translations.py --check
 
 This is a one-off developer tool, not part of the build. It is safe to re-run:
-it only rewrites the two ``_source.*.json`` files, never ``es.json`` /
+it only rewrites the two ``_source.*.json`` files, never ``es/*.json`` /
 ``en.json``.
 """
 
@@ -89,15 +89,17 @@ def write_json(path: Path, payload: dict[str, str]) -> None:
 
 def report_unused(spanish: dict[str, str]) -> int:
     """Print prototype Spanish sentences that no hand-authored message reuses."""
-    authored = MESSAGES_DIR / "es.json"
-    if not authored.exists():
-        print(f"{authored} does not exist yet — nothing to check.")
+    authored_dir = MESSAGES_DIR / "es"
+    if not authored_dir.exists():
+        print(f"{authored_dir} does not exist yet — nothing to check.")
         return 0
 
-    used = set(flat_values(json.loads(authored.read_text(encoding="utf-8")), []))
+    used: set[str] = set()
+    for authored in sorted(authored_dir.glob("*.json")):
+        used |= set(flat_values(json.loads(authored.read_text(encoding="utf-8")), []))
     unused = [key for key, value in spanish.items() if value not in used]
 
-    print(f"{len(spanish) - len(unused)}/{len(spanish)} prototype Spanish strings reused in es.json")
+    print(f"{len(spanish) - len(unused)}/{len(spanish)} prototype Spanish strings reused in es/*.json")
     if unused:
         print("\nNot reused (either intentionally dropped, or still to be carried over):")
         for key in unused:
@@ -110,7 +112,7 @@ def main() -> int:
     parser.add_argument(
         "--check",
         action="store_true",
-        help="also list prototype Spanish strings that messages/es.json does not reuse",
+        help="also list prototype Spanish strings that messages/es/*.json does not reuse",
     )
     args = parser.parse_args()
 

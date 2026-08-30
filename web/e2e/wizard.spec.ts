@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 
-import en from "../messages/en.json";
-import es from "../messages/es.json";
+import en from "../messages/en";
+import es from "../messages/es";
 
 /**
  * Phase 2 exit gate (MIGRATION.md §7): "`pnpm e2e` green; navigating

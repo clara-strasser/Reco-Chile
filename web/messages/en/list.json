@@ -1,0 +1,147 @@
+{
+  "title": "2. Build and order the preference list",
+  "filters": {
+    "title": "Program search filters",
+    "intro": "Start with the region and program type. Additional filters are optional.",
+    "emptyHint": "Leave every filter empty to include all programs.",
+    "more": "More filters: school day, PIE, PACE, fees and other characteristics",
+    "moreHint": "Leave a filter empty when that characteristic is not essential for the family.",
+    "region": {
+      "label": "Program region",
+      "help": "Choose a region to make the program list shorter. Already selected programs from other regions are kept in the list.",
+      "all": "All regions",
+      "allInline": "all regions"
+    },
+    "track": {
+      "general": "General academic programs",
+      "specialized": "Specialized / technical programs"
+    },
+    "specialty": {
+      "label": "Specialized area",
+      "help": "Leave empty to include all specialized areas."
+    },
+    "gender": {
+      "label": "Gender composition",
+      "help": "Leave empty to include mixed, boys-only, and girls-only programs."
+    },
+    "schoolDay": {
+      "label": "School day",
+      "help": "Leave empty to include full-day, morning, and afternoon programs."
+    },
+    "rurality": {
+      "label": "Rurality",
+      "help": "Leave empty to include both urban and rural schools."
+    },
+    "pie": {
+      "label": "PIE integration program",
+      "help": "Leave empty to include schools with and without PIE."
+    },
+    "pace": {
+      "label": "PACE program",
+      "help": "Leave empty to include schools with and without PACE."
+    },
+    "enrollmentFee": {
+      "label": "Enrollment fee",
+      "help": "Leave empty to include every enrollment-fee category."
+    },
+    "monthlyFee": {
+      "label": "Monthly fee",
+      "help": "Leave empty to include every monthly-fee category."
+    },
+    "religious": {
+      "label": "Religious orientation",
+      "help": "Leave empty to include every orientation."
+    },
+    "matchCount": "Showing {n} matching program option(s) for {region}.",
+    "keptOutside": "Existing selected program(s) outside the current filters are also kept available: {n}."
+  },
+  "search": {
+    "title": "Search and add programs",
+    "addPrograms": "Add programs",
+    "label": "Search for a program",
+    "placeholder": "Start typing the school name, commune, or program details.",
+    "add": "Add",
+    "loading": "Searching programs…",
+    "noResults": "No program matches this search."
+  },
+  "current": {
+    "title": "Current preference list",
+    "empty": "No program selected yet. Add the student's first wish above.",
+    "count": "{n} program(s) selected",
+    "useBuilder": "Use the builder below to enter the existing wish list directly."
+  },
+  "order": {
+    "strictHint": "Enter programs in strict order. The first program is the highest-ranked choice, and the final chance of each lower option depends on not getting the options above it.",
+    "preferenceHint": "Add the programs in the order the family genuinely prefers.",
+    "reorderHint": "Use ↑ and ↓ to reorder the student's strict ranking.",
+    "howTitle": "How should preferences be entered?",
+    "howBody": "Strict ranking means every program has a precise rank. Equivalence classes allow several programs to share the same preference group when the family sees them as tied."
+  },
+  "group": {
+    "label": "Preference group",
+    "short": "Group",
+    "hint": "Set the same preference-group number for programs considered equivalent. Group 1 is preferred to group 2, etc.",
+    "longHint": "Use the same preference-group number for programs the student considers tied. Lower group numbers are preferred. The app will test every possible order inside each tied group, so families can see whether the exact internal order changes the predicted outcome."
+  },
+  "rank": {
+    "label": "Wish rank",
+    "short": "Preference"
+  },
+  "card": {
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "remove": "Remove",
+    "detailsTrigger": "View program details",
+    "detailsTitle": "Program details",
+    "fields": {
+      "school": "School",
+      "commune": "Commune",
+      "region": "Region",
+      "programType": "Program type",
+      "specialty": "Specialty area",
+      "gender": "Gender composition",
+      "schoolDay": "School day",
+      "rurality": "Rurality",
+      "pie": "PIE",
+      "pace": "PACE",
+      "enrollmentFee": "Enrollment fee",
+      "monthlyFee": "Monthly fee",
+      "religious": "Religious orientation",
+      "capacity": "Capacity",
+      "trueApplicants": "True applicants last year",
+      "applicantsPerSeat": "Applicants / seat"
+    }
+  },
+  "priorities": {
+    "title": "Does the student have priority at this establishment?",
+    "hint": "Mark only the situations that apply to this specific establishment. SAE recognizes the four priority criteria below.",
+    "labels": {
+      "sibling": "Sibling priority",
+      "student": "Priority-student quota",
+      "parentCivilServant": "Civil-servant child priority",
+      "exStudent": "Former-student priority",
+      "alreadyRegistered": "Already-enrolled priority"
+    },
+    "descriptions": {
+      "sibling": "Has a sibling enrolled at the establishment",
+      "student": "Has priority-student status for this establishment",
+      "parentCivilServant": "Is the child of an employee of the establishment",
+      "exStudent": "Previously attended the establishment and was not expelled",
+      "alreadyRegistered": "The student is already enrolled in this establishment"
+    },
+    "alreadyRegisteredNote": "Current enrollment is shown separately because it is not one of the four SAE priority criteria.",
+    "none": "No priority declared for this program",
+    "declared": "Declared priorities: {priorities}"
+  },
+  "notices": {
+    "imputedTitle": "Some selected programs use estimated historical calibration values.",
+    "imputedShort": "Less reliable estimate: at least one selected program uses mean-imputed 2024 calibration values.",
+    "imputedBody": "Complete historical observations were unavailable for at least one selected program, so the model uses an imputed 2024 value. Interpret those program-level estimates with additional caution.",
+    "removed": "Some programs in the current wish list are no longer available in the loaded data and were removed: {programs}",
+    "recommendationsAdded": "{n} recommended program(s) were added at the end of the list. Check priorities for the new programs, then analyze the list again.",
+    "orderCount": "The current equivalence classes generate {n} compatible strict order(s). The app will test them to see whether tied programs lead to the same or different predicted outcomes.",
+    "addAtLeastOne": "Add at least one program to unlock the analysis.",
+    "duplicate": "That program is already in the list.",
+    "maxWishes": "The list cannot hold more than {max} programs."
+  }
+}

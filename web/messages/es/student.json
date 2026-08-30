@@ -1,0 +1,27 @@
+{
+  "title": "1. Identificar al estudiante",
+  "idLabel": "RUN/IPE del estudiante",
+  "idPlaceholder": "12.345.678-5 / 111222333-4",
+  "idHelp": "Ingresa un RUN válido con su dígito verificador módulo 11, o un IPE de nueve dígitos con su dígito verificador numérico. Los puntos y el guion son opcionales.",
+  "idHelpLong": "Se usa para calcular el percentil SHA-256 específico de cada establecimiento. Ingresa un RUN válido con su dígito verificador módulo 11, o un IPE de nueve dígitos con su dígito verificador numérico. Los puntos y el guion son opcionales.",
+  "idValid": "Formato válido.",
+  "idRequiredHint": "Ingresa el RUN/IPE del estudiante para habilitar el análisis.",
+  "why": {
+    "title": "¿Por qué solicitamos este dato?",
+    "body": "El identificador se usa para reproducir el cálculo MTB de desempate específico de cada establecimiento. No modifica ni envía la postulación oficial SAE del estudiante.",
+    "privacy": "El cálculo se realiza en esta aplicación. La dirección del hogar solo se envía a OpenStreetMap si la familia decide posteriormente geocodificarla para calcular las distancias de las recomendaciones."
+  },
+  "situationTitle": "Comenzar desde la situación actual de la familia",
+  "listStatus": {
+    "label": "¿La lista de preferencias del estudiante ya está definida?",
+    "yes": "Sí — quiero revisar mi lista",
+    "no": "No — ayúdame a crearla"
+  },
+  "ties": {
+    "label": "Todavía no he decidido el orden exacto entre algunos programas",
+    "help": "Usa esta opción de planificación para comparar órdenes posibles. La familia deberá elegir el orden que realmente prefiere antes de enviar la postulación oficial.",
+    "info": "Asigna el mismo número de grupo a los programas que la familia considera actualmente equivalentes. La app comparará todos los órdenes compatibles, pero esta agrupación exploratoria no se envía al SAE.",
+    "strictLabel": "Orden estricto",
+    "equivalenceLabel": "Clases de equivalencia"
+  }
+}

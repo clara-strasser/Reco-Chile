@@ -12,7 +12,8 @@ import { routing } from "./routing";
  * acts as a catch-all for unknown paths), so it is validated here and falls
  * back to Spanish — the prototype's default — rather than throwing.
  *
- * Messages are loaded per locale from `messages/{locale}.json`. Only the active
+ * Messages are loaded per locale from `messages/{locale}/index.ts`, which
+ * merges one JSON file per namespace. Only the active
  * locale's catalogue is bundled into the response.
  */
 export default getRequestConfig(async ({ requestLocale }) => {
@@ -23,6 +24,6 @@ export default getRequestConfig(async ({ requestLocale }) => {
 
   return {
     locale,
-    messages: (await import(`../messages/${locale}.json`)).default,
+    messages: (await import(`../messages/${locale}/index`)).default,
   };
 });

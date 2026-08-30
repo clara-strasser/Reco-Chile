@@ -1,0 +1,147 @@
+{
+  "title": "2. Armar y ordenar la lista de preferencias",
+  "filters": {
+    "title": "Filtros de búsqueda de programas",
+    "intro": "Comienza con la región y el tipo de programa. Los filtros adicionales son opcionales.",
+    "emptyHint": "Deja todos los filtros vacíos para incluir todos los programas.",
+    "more": "Más filtros: jornada, PIE, PACE, costos y otras características",
+    "moreHint": "Deja un filtro vacío cuando esa característica no sea esencial para la familia.",
+    "region": {
+      "label": "Región del programa",
+      "help": "Elige una región para acortar la lista de programas. Los programas ya seleccionados de otras regiones se mantienen en la lista.",
+      "all": "Todas las regiones",
+      "allInline": "todas las regiones"
+    },
+    "track": {
+      "general": "Programas científico-humanistas generales",
+      "specialized": "Programas técnico-profesionales"
+    },
+    "specialty": {
+      "label": "Área de especialidad",
+      "help": "Deja vacío para incluir todas las áreas de especialidad."
+    },
+    "gender": {
+      "label": "Composición por género",
+      "help": "Deja vacío para incluir programas mixtos, solo para hombres y solo para mujeres."
+    },
+    "schoolDay": {
+      "label": "Jornada escolar",
+      "help": "Deja vacío para incluir jornada completa, mañana y tarde."
+    },
+    "rurality": {
+      "label": "Ruralidad",
+      "help": "Deja vacío para incluir establecimientos urbanos y rurales."
+    },
+    "pie": {
+      "label": "Programa de Integración Escolar (PIE)",
+      "help": "Deja vacío para incluir establecimientos con y sin PIE."
+    },
+    "pace": {
+      "label": "Programa PACE",
+      "help": "Deja vacío para incluir establecimientos con y sin PACE."
+    },
+    "enrollmentFee": {
+      "label": "Matrícula",
+      "help": "Deja vacío para incluir todas las categorías de matrícula."
+    },
+    "monthlyFee": {
+      "label": "Mensualidad",
+      "help": "Deja vacío para incluir todas las categorías de mensualidad."
+    },
+    "religious": {
+      "label": "Orientación religiosa",
+      "help": "Deja vacío para incluir todas las orientaciones."
+    },
+    "matchCount": "Mostrando {n} programa(s) coincidente(s) para {region}.",
+    "keptOutside": "También se mantienen disponibles {n} programa(s) ya seleccionado(s) fuera de los filtros actuales."
+  },
+  "search": {
+    "title": "Buscar y agregar programas",
+    "addPrograms": "Agregar programas",
+    "label": "Buscar un programa",
+    "placeholder": "Empieza a escribir el nombre del establecimiento, comuna o detalles del programa.",
+    "add": "Agregar",
+    "loading": "Buscando programas…",
+    "noResults": "Ningún programa coincide con la búsqueda."
+  },
+  "current": {
+    "title": "Lista de preferencias actual",
+    "empty": "Todavía no hay ningún programa seleccionado. Agrega arriba la primera preferencia del estudiante.",
+    "count": "{n} programa(s) seleccionado(s)",
+    "useBuilder": "Usa el editor de abajo para ingresar directamente la lista existente."
+  },
+  "order": {
+    "strictHint": "Ingresa los programas en orden estricto. El primer programa es la opción mejor clasificada, y la probabilidad final de cada opción inferior depende de no obtener las opciones anteriores.",
+    "preferenceHint": "Agrega los programas en el orden que la familia realmente prefiere.",
+    "reorderHint": "Usa ↑ y ↓ para reordenar el ranking estricto del estudiante.",
+    "howTitle": "¿Cómo se deben ingresar las preferencias?",
+    "howBody": "Orden estricto significa que cada programa tiene un ranking preciso. Las clases de equivalencia permiten que varios programas compartan el mismo grupo de preferencia cuando la familia los considera empatados."
+  },
+  "group": {
+    "label": "Grupo de preferencia",
+    "short": "Grupo",
+    "hint": "Asigna el mismo número de grupo de preferencia a los programas considerados equivalentes. El grupo 1 se prefiere al grupo 2, etc.",
+    "longHint": "Usa el mismo número de grupo de preferencia para los programas que el estudiante considera empatados. Los números más bajos son preferidos. La app probará todos los órdenes posibles dentro de cada grupo empatado, para que las familias vean si el orden interno exacto cambia el resultado previsto."
+  },
+  "rank": {
+    "label": "Ranking de preferencia",
+    "short": "Preferencia"
+  },
+  "card": {
+    "moveUp": "Subir",
+    "moveDown": "Bajar",
+    "remove": "Eliminar",
+    "detailsTrigger": "Ver detalles del programa",
+    "detailsTitle": "Detalles del programa",
+    "fields": {
+      "school": "Establecimiento",
+      "commune": "Comuna",
+      "region": "Región",
+      "programType": "Tipo de programa",
+      "specialty": "Área de especialidad",
+      "gender": "Composición por género",
+      "schoolDay": "Jornada escolar",
+      "rurality": "Ruralidad",
+      "pie": "PIE",
+      "pace": "PACE",
+      "enrollmentFee": "Matrícula",
+      "monthlyFee": "Mensualidad",
+      "religious": "Orientación religiosa",
+      "capacity": "Cupos",
+      "trueApplicants": "Postulantes reales el año anterior",
+      "applicantsPerSeat": "Postulantes / cupo"
+    }
+  },
+  "priorities": {
+    "title": "¿El estudiante tiene prioridad en este establecimiento?",
+    "hint": "Marca únicamente las situaciones que correspondan a este establecimiento. El SAE reconoce los cuatro criterios de prioridad que aparecen a continuación.",
+    "labels": {
+      "sibling": "Prioridad por hermano/a",
+      "student": "Cupo para estudiantes prioritarios",
+      "parentCivilServant": "Prioridad por hijo/a de funcionario/a",
+      "exStudent": "Prioridad por exalumno/a",
+      "alreadyRegistered": "Ya matriculado/a"
+    },
+    "descriptions": {
+      "sibling": "Tiene un hermano o hermana matriculado/a en el establecimiento",
+      "student": "Tiene la condición de estudiante prioritario para este establecimiento",
+      "parentCivilServant": "Es hijo/a de un funcionario/a del establecimiento",
+      "exStudent": "Fue estudiante del establecimiento y no fue expulsado/a",
+      "alreadyRegistered": "El estudiante ya está matriculado en este establecimiento"
+    },
+    "alreadyRegisteredNote": "La matrícula actual se muestra por separado porque no es uno de los cuatro criterios de prioridad SAE.",
+    "none": "Sin prioridad declarada para este programa",
+    "declared": "Prioridades declaradas: {priorities}"
+  },
+  "notices": {
+    "imputedTitle": "Algunos programas seleccionados usan valores históricos de calibración estimados.",
+    "imputedShort": "Estimación menos confiable: al menos un programa seleccionado usa valores de calibración 2024 imputados por promedio.",
+    "imputedBody": "No había observaciones históricas completas para al menos un programa seleccionado, por lo que el modelo usa un valor imputado de 2024. Interpreta esas estimaciones con especial cautela.",
+    "removed": "Algunos programas de la lista actual ya no están disponibles en los datos cargados y fueron eliminados: {programs}",
+    "recommendationsAdded": "Se agregaron {n} programa(s) recomendado(s) al final de la lista. Revisa las prioridades de los nuevos programas y vuelve a analizar la lista.",
+    "orderCount": "Las clases de equivalencia actuales generan {n} orden(es) estricto(s) compatible(s). La app los probará para ver si los programas empatados llevan al mismo resultado previsto o a resultados distintos.",
+    "addAtLeastOne": "Agrega al menos un programa para habilitar el análisis.",
+    "duplicate": "Ese programa ya está en la lista.",
+    "maxWishes": "La lista no puede tener más de {max} programas."
+  }
+}
