@@ -182,6 +182,35 @@ If the user explicitly submits a home address, the app queries OpenStreetMap's N
 
 ## Installation
 
+### Python version
+
+The project requires **Python 3.10 or newer**. The FastAPI models use PEP 604
+unions (`int | None`), which older interpreters cannot evaluate at runtime.
+
+The required version is declared in `.python-version`, which is read
+automatically by pyenv, uv, mise, and asdf. If you use none of those, install a
+matching interpreter yourself.
+
+With [pyenv](https://github.com/pyenv/pyenv):
+
+```bash
+brew install pyenv                  # macOS; see the pyenv README for other systems
+pyenv install 3.12
+```
+
+Add pyenv to your shell once, then restart it:
+
+```bash
+export PYENV_ROOT="$HOME/.pyenv"
+[[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init - zsh)"          # use `bash` instead of `zsh` for bash
+```
+
+Inside the project directory, `python` then resolves to the version pinned in
+`.python-version`.
+
+### Project setup
+
 Clone the repository and enter the project directory:
 
 ```bash
@@ -192,7 +221,7 @@ cd Reco-Chile
 Create and activate a virtual environment:
 
 ```bash
-python3 -m venv .venv
+python -m venv .venv
 source .venv/bin/activate
 ```
 
@@ -202,19 +231,32 @@ On Windows PowerShell, activate it with:
 .venv\Scripts\Activate.ps1
 ```
 
+Verify the interpreter before installing, especially on macOS, where a bare
+`python3` often resolves to the system Python 3.9:
+
+```bash
+python -V                           # expect 3.12.x
+```
+
 Install the dependencies:
 
 ```bash
-python3 -m pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 Run the application:
 
 ```bash
-python3 -m streamlit run app.py
+python -m streamlit run app.py
 ```
 
 The main dependencies are Streamlit, pandas, NumPy, and SciPy.
+
+> [!NOTE]
+> `requirements.txt` uses lower-bound (`>=`) pins, so a fresh install resolves to
+> the newest compatible releases and two environments created at different times
+> may differ. Pin exact versions with `pip freeze > requirements.txt` when you
+> need a reproducible environment for analysis.
 
 ## Data files
 
