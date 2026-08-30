@@ -1,0 +1,223 @@
+import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  buildUpstreamUrl,
+  DEFAULT_UPSTREAM_BASE_URL,
+  proxyRequest,
+  upstreamBaseUrl,
+} from "./proxy";
+
+const RUN = "11111111-1";
+const SIMULATE_BODY = JSON.stringify({
+  student_id: RUN,
+  wishes: [{ program_id: "1234:5" }],
+});
+
+function stubFetch(response: Response | Error) {
+  const calls: { url: string; init: RequestInit }[] = [];
+  const doFetch = vi.fn(
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push({ url: String(input), init: init ?? {} });
+      if (response instanceof Error) throw response;
+      return response;
+    },
+  ) as unknown as typeof fetch;
+  return { calls, doFetch };
+}
+
+describe("upstreamBaseUrl", () => {
+  it("falls back to the documented dev origin", () => {
+    expect(upstreamBaseUrl({})).toBe(DEFAULT_UPSTREAM_BASE_URL);
+    expect(upstreamBaseUrl({ API_BASE_URL: "   " })).toBe(
+      DEFAULT_UPSTREAM_BASE_URL,
+    );
+  });
+
+  it("uses API_BASE_URL and drops trailing slashes", () => {
+    expect(upstreamBaseUrl({ API_BASE_URL: "http://api:8000/" })).toBe(
+      "http://api:8000",
+    );
+  });
+});
+
+describe("buildUpstreamUrl", () => {
+  const base = "http://localhost:8000";
+
+  it("joins segments onto the base URL", () => {
+    expect(buildUpstreamUrl(["meta"], "", base)).toBe(
+      "http://localhost:8000/meta",
+    );
+    expect(buildUpstreamUrl(["programs", "1234:5"], "", base)).toBe(
+      "http://localhost:8000/programs/1234%3A5",
+    );
+  });
+
+  it("keeps the query string, with or without its leading ?", () => {
+    expect(buildUpstreamUrl(["programs"], "?q=liceo&lang=es", base)).toBe(
+      "http://localhost:8000/programs?q=liceo&lang=es",
+    );
+    expect(buildUpstreamUrl(["programs"], "track=TP&track=HC", base)).toBe(
+      "http://localhost:8000/programs?track=TP&track=HC",
+    );
+  });
+
+  it("rejects traversal and empty segments", () => {
+    expect(() => buildUpstreamUrl([".."], "", base)).toThrow(/Invalid/);
+    expect(() =>
+      buildUpstreamUrl(["programs", "..", "admin"], "", base),
+    ).toThrow(/Invalid/);
+    expect(() => buildUpstreamUrl(["programs", ""], "", base)).toThrow(
+      /Invalid/,
+    );
+    expect(() => buildUpstreamUrl([], "", base)).toThrow(
+      /Missing upstream path/,
+    );
+  });
+
+  it("cannot escape the upstream origin through an encoded segment", () => {
+    const url = buildUpstreamUrl(["evil.example.com", "x"], "", base);
+    expect(new URL(url).origin).toBe(base);
+    expect(url).toBe("http://localhost:8000/evil.example.com/x");
+  });
+});
+
+describe("proxyRequest", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("forwards a GET with its query string and Accept-Language", async () => {
+    const { calls, doFetch } = stubFetch(
+      Response.json({ regions: [] }, { status: 200 }),
+    );
+    const request = new Request("http://localhost:3000/api/programs?q=liceo", {
+      headers: { "accept-language": "en", cookie: "session=secret" },
+    });
+
+    const response = await proxyRequest(request, ["programs"], {
+      baseUrl: "http://localhost:8000",
+      fetch: doFetch,
+    });
+
+    expect(calls[0].url).toBe("http://localhost:8000/programs?q=liceo");
+    expect(calls[0].init.method).toBe("GET");
+    expect(calls[0].init.body).toBeUndefined();
+    const forwarded = new Headers(calls[0].init.headers);
+    expect(forwarded.get("accept-language")).toBe("en");
+    // Browser credentials are not part of this contract and are not forwarded.
+    expect(forwarded.get("cookie")).toBeNull();
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ regions: [] });
+  });
+
+  it("passes a POST body through untouched and streams the answer back", async () => {
+    const { calls, doFetch } = stubFetch(
+      Response.json({ unmatched_risk: 0.12 }, { status: 200 }),
+    );
+    const request = new Request("http://localhost:3000/api/simulate?lang=es", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: SIMULATE_BODY,
+    });
+
+    const response = await proxyRequest(request, ["simulate"], {
+      baseUrl: "http://localhost:8000",
+      fetch: doFetch,
+    });
+
+    expect(calls[0].url).toBe("http://localhost:8000/simulate?lang=es");
+    expect(calls[0].init.method).toBe("POST");
+    expect(calls[0].init.body).toBe(SIMULATE_BODY);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("application/json");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    await expect(response.json()).resolves.toEqual({ unmatched_risk: 0.12 });
+  });
+
+  it("relays the upstream status and error envelope unchanged", async () => {
+    const envelope = {
+      error_key: "invalid_student_id",
+      message: "El RUN no es válido.",
+      params: {},
+    };
+    const { doFetch } = stubFetch(Response.json(envelope, { status: 422 }));
+    const request = new Request("http://localhost:3000/api/simulate", {
+      method: "POST",
+      body: SIMULATE_BODY,
+    });
+
+    const response = await proxyRequest(request, ["simulate"], {
+      baseUrl: "http://localhost:8000",
+      fetch: doFetch,
+    });
+
+    expect(response.status).toBe(422);
+    await expect(response.json()).resolves.toEqual(envelope);
+  });
+
+  it("answers an unreachable upstream with the same envelope shape", async () => {
+    const { doFetch } = stubFetch(new TypeError(`fetch failed for ${RUN}`));
+    const request = new Request("http://localhost:3000/api/simulate", {
+      method: "POST",
+      body: SIMULATE_BODY,
+    });
+
+    const response = await proxyRequest(request, ["simulate"], {
+      baseUrl: "http://localhost:8000",
+      fetch: doFetch,
+    });
+
+    expect(response.status).toBe(502);
+    const body = (await response.json()) as Record<string, unknown>;
+    expect(body.error_key).toBe("network_error");
+    expect(typeof body.message).toBe("string");
+    expect(body.params).toEqual({});
+    // The upstream error text (which can quote the request) is not relayed.
+    expect(JSON.stringify(body)).not.toContain(RUN);
+  });
+
+  it("404s an invalid path without echoing it", async () => {
+    const { calls, doFetch } = stubFetch(Response.json({}, { status: 200 }));
+    const request = new Request("http://localhost:3000/api/..");
+
+    const response = await proxyRequest(request, [".."], {
+      baseUrl: "http://localhost:8000",
+      fetch: doFetch,
+    });
+
+    expect(response.status).toBe(404);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("never logs the request body", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    const info = vi.spyOn(console, "info").mockImplementation(() => {});
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    const debug = vi.spyOn(console, "debug").mockImplementation(() => {});
+
+    // Both the happy path and the failure path.
+    const ok = stubFetch(Response.json({}, { status: 200 }));
+    await proxyRequest(
+      new Request("http://localhost:3000/api/simulate", {
+        method: "POST",
+        body: SIMULATE_BODY,
+      }),
+      ["simulate"],
+      { baseUrl: "http://localhost:8000", fetch: ok.doFetch },
+    );
+    const down = stubFetch(new TypeError("boom"));
+    await proxyRequest(
+      new Request("http://localhost:3000/api/geocode", {
+        method: "POST",
+        body: JSON.stringify({ address: "Av. Siempre Viva 742" }),
+      }),
+      ["geocode"],
+      { baseUrl: "http://localhost:8000", fetch: down.doFetch },
+    );
+
+    // MIGRATION.md §4.5: the RUN/IPE and the home address never reach a log.
+    for (const spy of [log, info, warn, error, debug]) {
+      expect(spy).not.toHaveBeenCalled();
+    }
+  });
+});

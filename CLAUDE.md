@@ -47,8 +47,8 @@ pnpm dev                           # expects API_BASE_URL (default http://localh
 pnpm build && pnpm lint && pnpm test && pnpm e2e
 ```
 
-Node ≥ 20 and pnpm are required and are not yet installed on the original
-development machine.
+Node ≥ 20 (26 installed via Homebrew) and pnpm 11 are required. `pnpm e2e` starts
+both uvicorn (from the repo `.venv`) and `next dev` itself.
 
 ### Python version
 

@@ -1,0 +1,742 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { GeocodeResult, SimulationResponse } from "@/lib/store/types";
+import {
+  canContinue,
+  canEnterStep,
+  DEFAULT_RECOMMENDATION_COUNT,
+  emptyFilters,
+  equivalenceOrderCount,
+  equivalenceOrderCountExceeds,
+  hydrateWizardStore,
+  initialWizardState,
+  lastAllowedStep,
+  makeWish,
+  nextEquivalenceGroup,
+  selectCanContinue,
+  selectCanEnterStep,
+  useWizardStore,
+  WIZARD_PERSIST_KEY,
+  WIZARD_PERSIST_VERSION,
+  wizardSessionStorage,
+  type Wish,
+  type WizardState,
+} from "@/lib/store/wizard";
+
+const VALID_RUN = "12345678-5";
+
+/** A stand-in for the `/simulate` payload; the store never reads its fields. */
+const SIMULATION = {
+  unmatched_risk: 0.12,
+  at_risk: false,
+  attention_level: "low",
+  thresholds: { hard: 0.5, soft: 0.25 },
+  predicted_outcome: "School A",
+  predicted_outcome_program_id: "1001:A",
+  outcomes: [],
+  wishes: [],
+} satisfies SimulationResponse;
+
+const HOME = {
+  ok: true,
+  address: "Av. Siempre Viva 742",
+  lat: -33.45,
+  lon: -70.66,
+  precision: "address",
+  display_name: "Av. Siempre Viva 742, Santiago",
+  warning_key: null,
+  error_key: null,
+  params: {},
+  message: "",
+} satisfies GeocodeResult;
+
+const store = () => useWizardStore.getState();
+
+/** Put the store in "step 3 reachable, simulation fresh" shape. */
+function seed(options: { ties?: boolean; programIds?: string[] } = {}) {
+  const { ties = false, programIds = ["1001:A", "1002:B", "1003:C"] } = options;
+  store().reset();
+  store().setStudentId(VALID_RUN);
+  store().setUseEquivalenceClasses(ties);
+  for (const programId of programIds) store().addWish(programId);
+  store().setSimulation(SIMULATION);
+}
+
+function expectInvalidated() {
+  expect(store().simulation).toBeNull();
+  expect(store().simulationStale).toBe(true);
+}
+
+beforeEach(() => {
+  window.sessionStorage.clear();
+  store().reset();
+});
+
+describe("initial state", () => {
+  it("starts empty, with no simulation and nothing persisted", () => {
+    expect(store()).toMatchObject(initialWizardState());
+    expect(store().recommendationCount).toBe(DEFAULT_RECOMMENDATION_COUNT);
+    expect(store().simulationStale).toBe(true);
+  });
+});
+
+describe("invalidation table §4.2 — studentId", () => {
+  it("drops the simulation when the identifier changes", () => {
+    seed();
+    expect(store().simulation).not.toBeNull();
+    store().setStudentId("11111111-1");
+    expectInvalidated();
+  });
+
+  it("is a no-op when the identifier is unchanged", () => {
+    seed();
+    store().setStudentId(VALID_RUN);
+    expect(store().simulation).toBe(SIMULATION);
+    expect(store().simulationStale).toBe(false);
+  });
+});
+
+describe("invalidation table §4.2 — mode toggle", () => {
+  it("keeps the wishes and numbers the groups by position in ties mode", () => {
+    seed();
+    expect(store().wishes.map((wish) => wish.equivalenceGroup)).toEqual([
+      null,
+      null,
+      null,
+    ]);
+
+    store().setSimulation(SIMULATION);
+    store().setUseEquivalenceClasses(true);
+
+    expect(store().wishes.map((wish) => wish.programId)).toEqual([
+      "1001:A",
+      "1002:B",
+      "1003:C",
+    ]);
+    expect(store().wishes.map((wish) => wish.equivalenceGroup)).toEqual([
+      1, 2, 3,
+    ]);
+    expectInvalidated();
+  });
+
+  it("keeps the wishes and clears the groups back in strict mode", () => {
+    seed({ ties: true });
+    store().setWishGroup("1002:B", 1);
+    store().setSimulation(SIMULATION);
+
+    store().setUseEquivalenceClasses(false);
+
+    expect(store().wishes.map((wish) => wish.programId)).toEqual([
+      "1001:A",
+      "1002:B",
+      "1003:C",
+    ]);
+    expect(store().wishes.map((wish) => wish.equivalenceGroup)).toEqual([
+      null,
+      null,
+      null,
+    ]);
+    expectInvalidated();
+  });
+
+  it("is a no-op when the mode does not actually change", () => {
+    seed();
+    store().setUseEquivalenceClasses(false);
+    expect(store().simulation).toBe(SIMULATION);
+  });
+
+  it("keeps the priority flags across a toggle", () => {
+    seed();
+    store().setWishFlag("1002:B", "prioritySibling", true);
+    store().setSimulation(SIMULATION);
+    store().setUseEquivalenceClasses(true);
+    expect(store().wishes[1]).toMatchObject({
+      programId: "1002:B",
+      prioritySibling: true,
+      equivalenceGroup: 2,
+    });
+  });
+});
+
+describe("invalidation table §4.2 — wish changes", () => {
+  it("invalidates on add, and ignores duplicates", () => {
+    seed();
+    store().addWish("1004:D");
+    expect(store().wishes).toHaveLength(4);
+    expectInvalidated();
+
+    store().setSimulation(SIMULATION);
+    store().addWish("1004:D");
+    expect(store().wishes).toHaveLength(4);
+    expect(store().simulation).toBe(SIMULATION);
+  });
+
+  it("gives an added wish its own trailing group in ties mode", () => {
+    seed({ ties: true });
+    expect(store().wishes.map((wish) => wish.equivalenceGroup)).toEqual([
+      1, 2, 3,
+    ]);
+    store().addWish("1004:D");
+    expect(store().wishes[3].equivalenceGroup).toBe(4);
+
+    // max(group) + 1, not len + 1 (mirrors ui_wish_builder).
+    store().setWishGroup("1004:D", 9);
+    store().addWish("1005:E");
+    expect(store().wishes[4].equivalenceGroup).toBe(10);
+  });
+
+  it("invalidates on remove, and ignores unknown ids", () => {
+    seed();
+    store().removeWish("1002:B");
+    expect(store().wishes.map((wish) => wish.programId)).toEqual([
+      "1001:A",
+      "1003:C",
+    ]);
+    expectInvalidated();
+
+    store().setSimulation(SIMULATION);
+    store().removeWish("nope");
+    expect(store().simulation).toBe(SIMULATION);
+  });
+
+  it("invalidates on reorder by direction and by index", () => {
+    seed();
+    store().moveWish("1003:C", "up");
+    expect(store().wishes.map((wish) => wish.programId)).toEqual([
+      "1001:A",
+      "1003:C",
+      "1002:B",
+    ]);
+    expectInvalidated();
+
+    store().setSimulation(SIMULATION);
+    store().moveWish("1001:A", 2);
+    expect(store().wishes.map((wish) => wish.programId)).toEqual([
+      "1003:C",
+      "1002:B",
+      "1001:A",
+    ]);
+    expectInvalidated();
+  });
+
+  it("does not invalidate when a move changes nothing", () => {
+    seed();
+    store().moveWish("1001:A", "up"); // already first
+    store().moveWish("1003:C", "down"); // already last
+    store().moveWish("1002:B", 1); // same index
+    store().moveWish("unknown", "down");
+    expect(store().wishes.map((wish) => wish.programId)).toEqual([
+      "1001:A",
+      "1002:B",
+      "1003:C",
+    ]);
+    expect(store().simulation).toBe(SIMULATION);
+  });
+
+  it("clamps an out-of-range move target", () => {
+    seed();
+    store().moveWish("1001:A", 99);
+    expect(store().wishes.map((wish) => wish.programId)).toEqual([
+      "1002:B",
+      "1003:C",
+      "1001:A",
+    ]);
+    store().moveWish("1001:A", -5);
+    expect(store().wishes.map((wish) => wish.programId)).toEqual([
+      "1001:A",
+      "1002:B",
+      "1003:C",
+    ]);
+  });
+
+  it("invalidates on a group change and clips groups at 1", () => {
+    seed({ ties: true });
+    store().setWishGroup("1002:B", 1);
+    expect(store().wishes[1].equivalenceGroup).toBe(1);
+    expectInvalidated();
+
+    store().setSimulation(SIMULATION);
+    store().setWishGroup("1002:B", 1);
+    expect(store().simulation).toBe(SIMULATION);
+
+    store().setWishGroup("1003:C", 0);
+    expect(store().wishes[2].equivalenceGroup).toBe(1);
+    expectInvalidated();
+
+    store().setSimulation(SIMULATION);
+    store().setWishGroup("1003:C", null);
+    expect(store().wishes[2].equivalenceGroup).toBeNull();
+    expectInvalidated();
+  });
+
+  it("invalidates on a priority flag change only when the value moves", () => {
+    seed();
+    store().setWishFlag("1001:A", "priorityAlreadyRegistered", true);
+    expect(store().wishes[0].priorityAlreadyRegistered).toBe(true);
+    expectInvalidated();
+
+    store().setSimulation(SIMULATION);
+    store().setWishFlag("1001:A", "priorityAlreadyRegistered", true);
+    expect(store().simulation).toBe(SIMULATION);
+  });
+});
+
+describe("invalidation table §4.2 — programs that vanished from the data", () => {
+  it("drops them, reports them, and invalidates", () => {
+    seed();
+    const dropped = store().dropMissingPrograms(["1002:B", "9999:X"]);
+    expect(dropped).toEqual(["1002:B"]);
+    expect(store().wishes.map((wish) => wish.programId)).toEqual([
+      "1001:A",
+      "1003:C",
+    ]);
+    expectInvalidated();
+  });
+
+  it("is a no-op when every program is still there", () => {
+    seed();
+    expect(store().dropMissingPrograms(["9999:X"])).toEqual([]);
+    expect(store().simulation).toBe(SIMULATION);
+  });
+});
+
+describe("invalidation table §4.2 — appended recommendations", () => {
+  it("appends trailing ranks in strict mode", () => {
+    seed();
+    store().appendRecommendations(["2001:R", "2002:S"]);
+    expect(store().wishes.map((wish) => wish.programId)).toEqual([
+      "1001:A",
+      "1002:B",
+      "1003:C",
+      "2001:R",
+      "2002:S",
+    ]);
+    expect(store().wishes.map((wish) => wish.equivalenceGroup)).toEqual([
+      null,
+      null,
+      null,
+      null,
+      null,
+    ]);
+    expectInvalidated();
+  });
+
+  it("appends singleton groups in ties mode — never one shared group", () => {
+    seed({ ties: true });
+    store().setWishGroup("1002:B", 1); // A and B tied → groups 1, 1, 3
+    store().setSimulation(SIMULATION);
+
+    store().appendRecommendations(["2001:R", "2002:S"]);
+
+    expect(store().wishes.map((wish) => wish.equivalenceGroup)).toEqual([
+      1, 1, 3, 4, 5,
+    ]);
+    expectInvalidated();
+  });
+
+  it("ignores duplicates and empty ids, and is a no-op when nothing is new", () => {
+    seed({ ties: true });
+    store().appendRecommendations(["1001:A", " ", "2001:R", "2001:R"]);
+    expect(store().wishes.map((wish) => wish.programId)).toEqual([
+      "1001:A",
+      "1002:B",
+      "1003:C",
+      "2001:R",
+    ]);
+
+    store().setSimulation(SIMULATION);
+    store().appendRecommendations(["1001:A"]);
+    expect(store().simulation).toBe(SIMULATION);
+  });
+});
+
+describe("inputs that must NOT invalidate the simulation", () => {
+  it("keeps the result for filters, list-exists, home and slider changes", () => {
+    seed();
+    store().setListExists(true);
+    store().setFilters({ region: "Metropolitana", tracks: ["Scientific"] });
+    store().setFilters((current) => ({
+      genders: [...current.genders, "Mixed"],
+    }));
+    store().setHome(HOME);
+    store().setRecommendationCount(7);
+
+    expect(store().listExists).toBe(true);
+    expect(store().filters).toEqual({
+      ...emptyFilters(),
+      region: "Metropolitana",
+      tracks: ["Scientific"],
+      genders: ["Mixed"],
+    });
+    expect(store().home).toBe(HOME);
+    expect(store().recommendationCount).toBe(7);
+    expect(store().simulation).toBe(SIMULATION);
+    expect(store().simulationStale).toBe(false);
+  });
+
+  it("clamps the recommendation count to 2..10", () => {
+    store().setRecommendationCount(1);
+    expect(store().recommendationCount).toBe(2);
+    store().setRecommendationCount(99);
+    expect(store().recommendationCount).toBe(10);
+    store().setRecommendationCount(Number.NaN);
+    expect(store().recommendationCount).toBe(2);
+  });
+
+  it("marks the simulation stale again when it is cleared", () => {
+    seed();
+    store().setSimulation(null);
+    expectInvalidated();
+  });
+
+  it("reset() returns the initial state", () => {
+    seed({ ties: true });
+    store().setHome(HOME);
+    store().reset();
+    expect(store()).toMatchObject(initialWizardState());
+  });
+});
+
+describe("equivalenceOrderCount", () => {
+  const wishes = (groups: (number | null)[]): Wish[] =>
+    groups.map((group, index) => makeWish(`p${index}`, group));
+
+  it("is 0 for an empty list, mirroring count_equivalence_orders", () => {
+    expect(equivalenceOrderCount([])).toBe(BigInt(0));
+  });
+
+  it("is 1 when nothing is tied", () => {
+    expect(equivalenceOrderCount(wishes([1, 2, 3]))).toBe(BigInt(1));
+    expect(equivalenceOrderCount(wishes([null, null, null]))).toBe(BigInt(1));
+  });
+
+  it("is the product of the factorials of the group sizes", () => {
+    expect(equivalenceOrderCount(wishes([1, 1]))).toBe(BigInt(2));
+    expect(equivalenceOrderCount(wishes([1, 1, 1]))).toBe(BigInt(6));
+    expect(equivalenceOrderCount(wishes([1, 1, 1, 2, 2, 2]))).toBe(BigInt(36));
+    expect(equivalenceOrderCount(wishes([1, 1, 1, 1]))).toBe(BigInt(24));
+    expect(equivalenceOrderCount(wishes([1, 1, 2, 2, 3]))).toBe(BigInt(4));
+  });
+
+  it("treats a missing group as the wish's own 1-based position", () => {
+    // Same fallback as `prepare_ordered_wishes` (EQUIV_GROUP ← WISH_RANK):
+    // positions 1..3 → groups 1, 2, 3, so nothing is tied.
+    expect(equivalenceOrderCount(wishes([1, null, null]))).toBe(BigInt(1));
+    // …and an explicit group may collide with a fallback one: groups 2, 2, 3.
+    expect(equivalenceOrderCount(wishes([2, null, null]))).toBe(BigInt(2));
+  });
+
+  it("stays exact past Number.MAX_SAFE_INTEGER", () => {
+    const twenty = wishes(Array.from({ length: 20 }, () => 1));
+    expect(equivalenceOrderCount(twenty)).toBe(BigInt("2432902008176640000"));
+    const thirty = wishes(Array.from({ length: 30 }, () => 1));
+    expect(equivalenceOrderCount(thirty)).toBe(
+      BigInt("265252859812191058636308480000000"),
+    );
+  });
+
+  it("compares against the cap without building the full product", () => {
+    const cap = 10000;
+    expect(equivalenceOrderCountExceeds(wishes([1, 1, 1, 1]), cap)).toBe(false);
+    // 7! = 5040 ≤ 10000; 8! = 40320 > 10000.
+    expect(equivalenceOrderCountExceeds(wishes(Array(7).fill(1)), cap)).toBe(
+      false,
+    );
+    expect(equivalenceOrderCountExceeds(wishes(Array(8).fill(1)), cap)).toBe(
+      true,
+    );
+    // 30 tied wishes would be 30! — the comparison short-circuits.
+    expect(equivalenceOrderCountExceeds(wishes(Array(30).fill(1)), cap)).toBe(
+      true,
+    );
+    expect(equivalenceOrderCountExceeds([], cap)).toBe(false);
+    expect(equivalenceOrderCountExceeds(wishes([1, 1]), BigInt(2))).toBe(false);
+    expect(equivalenceOrderCountExceeds(wishes([1, 1, 1]), BigInt(2))).toBe(
+      true,
+    );
+  });
+});
+
+describe("nextEquivalenceGroup", () => {
+  it("falls back to len + 1 when no wish carries a group", () => {
+    expect(nextEquivalenceGroup([])).toBe(1);
+    expect(nextEquivalenceGroup([makeWish("a"), makeWish("b")])).toBe(3);
+  });
+
+  it("is max(group) + 1 otherwise", () => {
+    expect(nextEquivalenceGroup([makeWish("a", 1), makeWish("b", 7)])).toBe(8);
+  });
+});
+
+describe("step gates §4.1", () => {
+  const MAX_ORDERS = 10000;
+  const state = (): WizardState => store();
+
+  it("step 1 continues only with a valid RUN/IPE", () => {
+    expect(canContinue(state(), 1)).toBe(false);
+    store().setStudentId("12345678-9"); // wrong check digit
+    expect(canContinue(state(), 1)).toBe(false);
+    store().setStudentId(VALID_RUN);
+    expect(canContinue(state(), 1)).toBe(true);
+    store().setStudentId("100200300-4"); // IPE
+    expect(canContinue(state(), 1)).toBe(true);
+  });
+
+  it("step 1 can always be entered; step 2 needs step 1", () => {
+    expect(canEnterStep(state(), 1)).toBe(true);
+    expect(canEnterStep(state(), 2)).toBe(false);
+    store().setStudentId(VALID_RUN);
+    expect(canEnterStep(state(), 2)).toBe(true);
+  });
+
+  it("step 2 needs at least one wish", () => {
+    store().setStudentId(VALID_RUN);
+    expect(canContinue(state(), 2)).toBe(false);
+    store().addWish("1001:A");
+    expect(canContinue(state(), 2)).toBe(true);
+  });
+
+  it("step 2 blocks an over-cap tied list, and only in ties mode", () => {
+    store().setStudentId(VALID_RUN);
+    store().setUseEquivalenceClasses(true);
+    for (let i = 0; i < 8; i += 1) store().addWish(`10${i}:P`);
+    for (const wish of store().wishes) store().setWishGroup(wish.programId, 1);
+
+    // 8! = 40320 > 10000
+    expect(canContinue(state(), 2, { maxOrders: MAX_ORDERS })).toBe(false);
+    // Without /meta the client cannot pre-check; the server still 422s.
+    expect(canContinue(state(), 2)).toBe(true);
+
+    store().setWishGroup("107:P", 2);
+    // 7! = 5040 ≤ 10000
+    expect(canContinue(state(), 2, { maxOrders: MAX_ORDERS })).toBe(true);
+
+    store().setUseEquivalenceClasses(false);
+    expect(canContinue(state(), 2, { maxOrders: MAX_ORDERS })).toBe(true);
+  });
+
+  it("steps 3 and 4 need a fresh simulation", () => {
+    seed();
+    expect(canContinue(state(), 3)).toBe(true);
+    expect(canEnterStep(state(), 3, { maxOrders: MAX_ORDERS })).toBe(true);
+    expect(canEnterStep(state(), 4, { maxOrders: MAX_ORDERS })).toBe(true);
+
+    store().addWish("1004:D"); // invalidates
+    expect(canContinue(state(), 3)).toBe(false);
+    expect(canEnterStep(state(), 4)).toBe(false);
+    // Step 3 stays reachable so it can re-run /simulate on entry.
+    expect(canEnterStep(state(), 3)).toBe(true);
+  });
+
+  it("step 4 is terminal — it has no forward action", () => {
+    seed();
+    expect(canContinue(state(), 4)).toBe(false);
+  });
+
+  it("lastAllowedStep is the redirect target of the step guard", () => {
+    expect(lastAllowedStep(state())).toBe(1);
+    store().setStudentId(VALID_RUN);
+    expect(lastAllowedStep(state())).toBe(2);
+    store().addWish("1001:A");
+    expect(lastAllowedStep(state())).toBe(3);
+    store().setSimulation(SIMULATION);
+    expect(lastAllowedStep(state())).toBe(4);
+  });
+
+  it("exposes curried selectors for useWizardStore(selector)", () => {
+    store().setStudentId(VALID_RUN);
+    // Called directly here; in a component this is `useWizardStore(selector)`.
+    expect(selectCanContinue(1)(store())).toBe(true);
+    expect(selectCanContinue(2)(store())).toBe(false);
+    expect(selectCanEnterStep(2)(store())).toBe(true);
+  });
+});
+
+describe("sessionStorage persistence §4.2", () => {
+  const persisted = () => {
+    const raw = window.sessionStorage.getItem(WIZARD_PERSIST_KEY);
+    expect(raw).not.toBeNull();
+    return JSON.parse(raw as string) as {
+      version: number;
+      state: Record<string, unknown>;
+    };
+  };
+
+  it("stores exactly the four allowed slices", () => {
+    seed({ ties: true });
+    store().setListExists(false);
+    store().setFilters({ region: "Metropolitana" });
+
+    const snapshot = persisted();
+    expect(snapshot.version).toBe(WIZARD_PERSIST_VERSION);
+    expect(Object.keys(snapshot.state).sort()).toEqual([
+      "filters",
+      "listExists",
+      "useEquivalenceClasses",
+      "wishes",
+    ]);
+  });
+
+  it("never writes the RUN/IPE, the simulation or the home location", () => {
+    seed();
+    store().setHome(HOME);
+    store().setSimulation(SIMULATION);
+
+    const raw = window.sessionStorage.getItem(WIZARD_PERSIST_KEY) as string;
+    expect(raw).not.toContain(VALID_RUN);
+    expect(raw).not.toContain("12345678");
+    expect(raw).not.toContain("unmatched_risk");
+    expect(raw).not.toContain("Siempre Viva");
+    const snapshot = persisted();
+    expect(snapshot.state).not.toHaveProperty("studentId");
+    expect(snapshot.state).not.toHaveProperty("simulation");
+    expect(snapshot.state).not.toHaveProperty("home");
+    expect(snapshot.state).not.toHaveProperty("recommendationCount");
+  });
+
+  it("rehydrates the list into a fresh module instance, without the secrets", async () => {
+    seed({ ties: true });
+    store().setListExists(true);
+    const raw = window.sessionStorage.getItem(WIZARD_PERSIST_KEY) as string;
+
+    vi.resetModules();
+    window.sessionStorage.setItem(WIZARD_PERSIST_KEY, raw);
+    const fresh = await import("@/lib/store/wizard");
+
+    // Nothing is read before the explicit hydration call.
+    expect(fresh.useWizardStore.getState().wishes).toEqual([]);
+
+    await fresh.hydrateWizardStore();
+
+    const state = fresh.useWizardStore.getState();
+    expect(state.wishes.map((wish) => wish.programId)).toEqual([
+      "1001:A",
+      "1002:B",
+      "1003:C",
+    ]);
+    expect(state.useEquivalenceClasses).toBe(true);
+    expect(state.listExists).toBe(true);
+    expect(state.studentId).toBe("");
+    expect(state.simulation).toBeNull();
+    expect(state.simulationStale).toBe(true);
+    expect(state.home).toBeNull();
+  });
+
+  it("hydrateWizardStore() reads the session back into the live store", async () => {
+    window.sessionStorage.setItem(
+      WIZARD_PERSIST_KEY,
+      JSON.stringify({
+        version: WIZARD_PERSIST_VERSION,
+        state: {
+          wishes: [makeWish("1001:A", 1)],
+          listExists: false,
+          useEquivalenceClasses: true,
+          filters: { ...emptyFilters(), region: "Metropolitana" },
+        },
+      }),
+    );
+
+    await hydrateWizardStore();
+
+    expect(store().wishes.map((wish) => wish.programId)).toEqual(["1001:A"]);
+    expect(store().useEquivalenceClasses).toBe(true);
+    expect(store().filters.region).toBe("Metropolitana");
+    expect(store().studentId).toBe("");
+  });
+
+  it("hydrating a stale payload does not resurrect a simulation", async () => {
+    window.sessionStorage.setItem(
+      WIZARD_PERSIST_KEY,
+      JSON.stringify({
+        version: WIZARD_PERSIST_VERSION,
+        state: { wishes: [makeWish("1001:A")] },
+      }),
+    );
+    vi.resetModules();
+    const fresh = await import("@/lib/store/wizard");
+    await fresh.hydrateWizardStore();
+    expect(fresh.useWizardStore.getState().wishes).toHaveLength(1);
+    expect(fresh.useWizardStore.getState().simulation).toBeNull();
+    expect(fresh.useWizardStore.getState().simulationStale).toBe(true);
+  });
+});
+
+describe("storage guard (SSR / blocked site data)", () => {
+  const realDescriptor = Object.getOwnPropertyDescriptor(
+    window,
+    "sessionStorage",
+  );
+
+  function withSessionStorage(get: () => Storage, run: () => void) {
+    Object.defineProperty(window, "sessionStorage", {
+      configurable: true,
+      get,
+    });
+    try {
+      run();
+    } finally {
+      if (realDescriptor) {
+        Object.defineProperty(window, "sessionStorage", realDescriptor);
+      }
+    }
+  }
+
+  it("degrades to no persistence when every storage call throws", () => {
+    const blocked = {
+      getItem: () => {
+        throw new Error("blocked");
+      },
+      setItem: () => {
+        throw new Error("blocked");
+      },
+      removeItem: () => {
+        throw new Error("blocked");
+      },
+    } as unknown as Storage;
+
+    withSessionStorage(
+      () => blocked,
+      () => {
+        expect(wizardSessionStorage.getItem(WIZARD_PERSIST_KEY)).toBeNull();
+        expect(() =>
+          wizardSessionStorage.setItem(WIZARD_PERSIST_KEY, "{}"),
+        ).not.toThrow();
+        expect(() =>
+          wizardSessionStorage.removeItem(WIZARD_PERSIST_KEY),
+        ).not.toThrow();
+
+        // The store itself keeps working entirely in memory.
+        expect(() => store().addWish("1001:A")).not.toThrow();
+        expect(store().wishes).toHaveLength(1);
+      },
+    );
+  });
+
+  it("survives a browser that throws on the sessionStorage property itself", () => {
+    withSessionStorage(
+      () => {
+        throw new Error("site data blocked");
+      },
+      () => {
+        expect(wizardSessionStorage.getItem(WIZARD_PERSIST_KEY)).toBeNull();
+        expect(() =>
+          wizardSessionStorage.setItem(WIZARD_PERSIST_KEY, "{}"),
+        ).not.toThrow();
+      },
+    );
+  });
+
+  it("returns null when there is no window (SSR)", () => {
+    const original = globalThis.window;
+    // @ts-expect-error — simulating a server render
+    delete globalThis.window;
+    try {
+      expect(wizardSessionStorage.getItem(WIZARD_PERSIST_KEY)).toBeNull();
+      expect(() =>
+        wizardSessionStorage.setItem(WIZARD_PERSIST_KEY, "{}"),
+      ).not.toThrow();
+    } finally {
+      globalThis.window = original;
+    }
+  });
+});

@@ -1,6 +1,6 @@
 # Migration: Streamlit → Next.js + shadcn/ui
 
-Status: **in progress** — Phases 0–1 done; see §9. This document is the single source of truth
+Status: **in progress** — Phases 0–2 done; see §9. This document is the single source of truth
 for the migration. It is written so that each phase can be handed to an
 autonomous agent (Opus 5) as one well-scoped unit of work, with a verifiable
 gate before the next phase starts.
@@ -282,8 +282,8 @@ three levels and thresholds as the prototype and come from `/meta`.
   (the Next.js proxy must not log request bodies).
 - Address is sent to `/geocode` only on explicit button click, never on
   change.
-- No analytics. `gatherUsageStats = false` has no Next.js equivalent; simply
-  do not add any.
+- No analytics. Next.js' own telemetry is disabled via `NEXT_TELEMETRY_DISABLED=1`
+  in the `dev`/`build`/`start` scripts; do not add any analytics.
 
 ---
 
@@ -564,7 +564,7 @@ Operating rules:
 | --- | --- | --- | --- | --- |
 | 0 | 2026-08-30 | `wf_9a779ad6-209` | green — 59 pytest, `/simulate` reproduces goldens to 1e-12 over HTTP | 2 impl agents (no worktrees, disjoint files), 1 review round with 1 must-fix (all 4 priority tiers now frozen); fixtures generated for the first time — 18 scenarios. Error body still nested under `detail` → Phase 1. |
 | 1 | 2026-08-30 | `wf_5864c3a1-cc2` | green — 107 pytest, engine imports with Streamlit blocked, isolated venv from `requirements-api.txt` passes, `/simulate` & `/recommend` reproduce goldens over HTTP (delta 0.0) | 4 impl agents; review: 0 must-fix, 3 should-fix — fixed at the human gate: validation errors no longer echo the request body (RUN privacy), `MAX_WISHES` moved to `constants.py` and raised to 30 (documented in §3), openapi.json committed so the drift check is real. |
-| 2 | – | – | – | |
+| 2 | 2026-08-30 | `wf_906ffd8c-8c1` | green — `pnpm lint/test(144)/build/e2e(9)` | Next.js 16.3.3, React 19.2, Tailwind 4, shadcn CLI 4 (`radix-nova`), next-intl 4.14, zustand; Node 26 (Current, not LTS — accepted). Deviation: `/meta` is fetched in the `(wizard)` group layout, not the root layout (keeps non-wizard pages backend-free) — keep it there. Review should-fixes fixed at the gate: Playwright now starts uvicorn too, `reuseExistingServer: !CI`, Next telemetry disabled. Open → Phase 3: `error.tsx` under `(wizard)`, `TooltipProvider`, `max_wishes` client gate, X-Forwarded-For for the geocode limiter. |
 | 3 | – | – | – | |
 | 4 | – | – | – | |
 | 5 | – | – | – | |
