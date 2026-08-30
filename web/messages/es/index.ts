@@ -9,6 +9,8 @@ import result from "./result.json";
 import improve from "./improve.json";
 import errors from "./errors.json";
 import enums from "./enums.json";
+import filters from "./filters.json";
+import wishes from "./wishes.json";
 
 const messages = {
   app,
@@ -19,6 +21,8 @@ const messages = {
   improve,
   errors,
   enums,
+  filters,
+  wishes,
 };
 
 export default messages;
