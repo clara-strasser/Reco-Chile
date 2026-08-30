@@ -77,21 +77,7 @@
     "howTitle": "How should preferences be entered?",
     "howBody": "Strict ranking means every program has a precise rank. Equivalence classes allow several programs to share the same preference group when the family sees them as tied."
   },
-  "group": {
-    "label": "Preference group",
-    "short": "Group",
-    "hint": "Set the same preference-group number for programs considered equivalent. Group 1 is preferred to group 2, etc.",
-    "longHint": "Use the same preference-group number for programs the student considers tied. Lower group numbers are preferred. The app will test every possible order inside each tied group, so families can see whether the exact internal order changes the predicted outcome."
-  },
-  "rank": {
-    "label": "Wish rank",
-    "short": "Preference"
-  },
   "card": {
-    "moveUp": "Move up",
-    "moveDown": "Move down",
-    "remove": "Remove",
-    "detailsTrigger": "View program details",
     "detailsTitle": "Program details",
     "fields": {
       "school": "School",
@@ -112,27 +98,6 @@
       "applicantsPerSeat": "Applicants / seat"
     }
   },
-  "priorities": {
-    "title": "Does the student have priority at this establishment?",
-    "hint": "Mark only the situations that apply to this specific establishment. SAE recognizes the four priority criteria below.",
-    "labels": {
-      "sibling": "Sibling priority",
-      "student": "Priority-student quota",
-      "parentCivilServant": "Civil-servant child priority",
-      "exStudent": "Former-student priority",
-      "alreadyRegistered": "Already-enrolled priority"
-    },
-    "descriptions": {
-      "sibling": "Has a sibling enrolled at the establishment",
-      "student": "Has priority-student status for this establishment",
-      "parentCivilServant": "Is the child of an employee of the establishment",
-      "exStudent": "Previously attended the establishment and was not expelled",
-      "alreadyRegistered": "The student is already enrolled in this establishment"
-    },
-    "alreadyRegisteredNote": "Current enrollment is shown separately because it is not one of the four SAE priority criteria.",
-    "none": "No priority declared for this program",
-    "declared": "Declared priorities: {priorities}"
-  },
   "notices": {
     "imputedTitle": "Some selected programs use estimated historical calibration values.",
     "imputedShort": "Less reliable estimate: at least one selected program uses mean-imputed 2024 calibration values.",
@@ -142,6 +107,7 @@
     "orderCount": "The current equivalence classes generate {n} compatible strict order(s). The app will test them to see whether tied programs lead to the same or different predicted outcomes.",
     "addAtLeastOne": "Add at least one program to unlock the analysis.",
     "duplicate": "That program is already in the list.",
-    "maxWishes": "The list cannot hold more than {max} programs."
+    "maxWishes": "The list cannot hold more than {max} programs.",
+    "imputedWhat": "What does this mean?"
   }
 }

@@ -13,5 +13,11 @@
     "title": "About this estimate",
     "body": "The model uses historical 2024 calibration data and 2025 capacity data. Results are estimates, not official admission guarantees.",
     "mtbMode": "MTB mode (admission 2026): SHA-256(RUN/IPE+RBD) percentile by school. Results are estimates based on last year's calibration data, not official admission guarantees."
+  },
+  "error": {
+    "title": "We could not show this step",
+    "body": "Something went wrong unexpectedly. Your entries are still in this tab, so you can try again without starting over.",
+    "retry": "Try again",
+    "digest": "Reference code: {digest}"
   }
 }

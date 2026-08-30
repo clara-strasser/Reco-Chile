@@ -4,7 +4,9 @@
 accept/reject behaviour is part of the frozen baseline. The five fixture cases
 are re-checked here directly (not only through ``test_engine_golden``), and the
 extra cases below cover input shapes families really type: a ``K`` check digit,
-stray whitespace, and a lowercase ``k``.
+stray whitespace, and a lowercase ``k`` — plus the non-ASCII digit forms
+that must be refused so the client-side mirror in
+``web/lib/validation/student-id.ts`` cannot disagree with the engine.
 
 Privacy note: every identifier in this file is synthetic. Only the normalized
 string is asserted; the SHA-256 hash input never leaves ``mtb_engine``.
@@ -116,3 +118,40 @@ def test_garbage_reports_the_format_message() -> None:
     with pytest.raises(InvalidStudentIdentifier) as excinfo:
         normalize_student_identifier("not-an-identifier")
     assert excinfo.value.message_key.startswith("Invalid RUN format.")
+
+
+# ---------------------------------------------------------------------------
+# ASCII-only digits (parity with the TypeScript mirror)
+# ---------------------------------------------------------------------------
+
+def test_non_ascii_digits_are_rejected() -> None:
+    """``\\d`` used to accept Arabic-Indic digits; ``[0-9]`` does not.
+
+    ``٤٥٦-1`` is the sharp case: Python's ``\\d`` matched the body, ``int()``
+    parsed it as 456, and the modulo-11 verifier of 456 really is ``1`` — so the
+    engine accepted it and normalized it to ``456-1``, while the client-side
+    mirror in ``web/lib/validation/student-id.ts`` (JavaScript ``\\d`` is
+    ASCII-only) rejected it as a format error. The two must agree.
+    """
+    with pytest.raises(InvalidStudentIdentifier) as excinfo:
+        normalize_student_identifier("٤٥٦-1")
+    assert excinfo.value.message_key.startswith("Invalid RUN format.")
+
+    with pytest.raises(InvalidStudentIdentifier):
+        normalize_run("٤٥٦-1")
+
+
+def test_fullwidth_digits_are_rejected() -> None:
+    """Fullwidth forms are the other family Python's ``\\d`` used to admit."""
+    with pytest.raises(InvalidStudentIdentifier):
+        normalize_student_identifier("１２３４５６７８-5")
+
+
+def test_non_ascii_digits_are_rejected_for_an_ipe() -> None:
+    """Ten compact characters still route to the IPE parser, which also refuses."""
+    with pytest.raises(InvalidStudentIdentifier) as excinfo:
+        normalize_student_identifier("١٠٠٢٠٠٣٠٠-4")
+    assert excinfo.value.message_key.startswith("Invalid IPE format.")
+
+    with pytest.raises(InvalidStudentIdentifier):
+        normalize_ipe("100200300-٤")

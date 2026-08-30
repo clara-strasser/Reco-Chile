@@ -77,21 +77,7 @@
     "howTitle": "¿Cómo se deben ingresar las preferencias?",
     "howBody": "Orden estricto significa que cada programa tiene un ranking preciso. Las clases de equivalencia permiten que varios programas compartan el mismo grupo de preferencia cuando la familia los considera empatados."
   },
-  "group": {
-    "label": "Grupo de preferencia",
-    "short": "Grupo",
-    "hint": "Asigna el mismo número de grupo de preferencia a los programas considerados equivalentes. El grupo 1 se prefiere al grupo 2, etc.",
-    "longHint": "Usa el mismo número de grupo de preferencia para los programas que el estudiante considera empatados. Los números más bajos son preferidos. La app probará todos los órdenes posibles dentro de cada grupo empatado, para que las familias vean si el orden interno exacto cambia el resultado previsto."
-  },
-  "rank": {
-    "label": "Ranking de preferencia",
-    "short": "Preferencia"
-  },
   "card": {
-    "moveUp": "Subir",
-    "moveDown": "Bajar",
-    "remove": "Eliminar",
-    "detailsTrigger": "Ver detalles del programa",
     "detailsTitle": "Detalles del programa",
     "fields": {
       "school": "Establecimiento",
@@ -112,27 +98,6 @@
       "applicantsPerSeat": "Postulantes / cupo"
     }
   },
-  "priorities": {
-    "title": "¿El estudiante tiene prioridad en este establecimiento?",
-    "hint": "Marca únicamente las situaciones que correspondan a este establecimiento. El SAE reconoce los cuatro criterios de prioridad que aparecen a continuación.",
-    "labels": {
-      "sibling": "Prioridad por hermano/a",
-      "student": "Cupo para estudiantes prioritarios",
-      "parentCivilServant": "Prioridad por hijo/a de funcionario/a",
-      "exStudent": "Prioridad por exalumno/a",
-      "alreadyRegistered": "Ya matriculado/a"
-    },
-    "descriptions": {
-      "sibling": "Tiene un hermano o hermana matriculado/a en el establecimiento",
-      "student": "Tiene la condición de estudiante prioritario para este establecimiento",
-      "parentCivilServant": "Es hijo/a de un funcionario/a del establecimiento",
-      "exStudent": "Fue estudiante del establecimiento y no fue expulsado/a",
-      "alreadyRegistered": "El estudiante ya está matriculado en este establecimiento"
-    },
-    "alreadyRegisteredNote": "La matrícula actual se muestra por separado porque no es uno de los cuatro criterios de prioridad SAE.",
-    "none": "Sin prioridad declarada para este programa",
-    "declared": "Prioridades declaradas: {priorities}"
-  },
   "notices": {
     "imputedTitle": "Algunos programas seleccionados usan valores históricos de calibración estimados.",
     "imputedShort": "Estimación menos confiable: al menos un programa seleccionado usa valores de calibración 2024 imputados por promedio.",
@@ -142,6 +107,7 @@
     "orderCount": "Las clases de equivalencia actuales generan {n} orden(es) estricto(s) compatible(s). La app los probará para ver si los programas empatados llevan al mismo resultado previsto o a resultados distintos.",
     "addAtLeastOne": "Agrega al menos un programa para habilitar el análisis.",
     "duplicate": "Ese programa ya está en la lista.",
-    "maxWishes": "La lista no puede tener más de {max} programas."
+    "maxWishes": "La lista no puede tener más de {max} programas.",
+    "imputedWhat": "¿Qué significa esto?"
   }
 }

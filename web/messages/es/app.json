@@ -13,5 +13,11 @@
     "title": "Acerca de esta estimación",
     "body": "El modelo usa datos históricos de calibración 2024 y datos de cupos 2025. Los resultados son estimaciones, no garantías oficiales de admisión.",
     "mtbMode": "Modo MTB (admisión 2026): percentil SHA-256(RUN/IPE+RBD) por establecimiento. Los resultados son estimaciones basadas en la calibración del año anterior; no son garantías oficiales de admisión."
+  },
+  "error": {
+    "title": "No pudimos mostrar este paso",
+    "body": "Ocurrió un error inesperado. Tus datos siguen en esta pestaña: puedes reintentar sin volver a empezar.",
+    "retry": "Reintentar",
+    "digest": "Código de referencia: {digest}"
   }
 }

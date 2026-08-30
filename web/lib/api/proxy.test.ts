@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildUpstreamUrl,
+  clientAddress,
   DEFAULT_UPSTREAM_BASE_URL,
   proxyRequest,
+  UNKNOWN_CLIENT_ADDRESS,
   upstreamBaseUrl,
 } from "./proxy";
 
@@ -77,6 +79,33 @@ describe("buildUpstreamUrl", () => {
     const url = buildUpstreamUrl(["evil.example.com", "x"], "", base);
     expect(new URL(url).origin).toBe(base);
     expect(url).toBe("http://localhost:8000/evil.example.com/x");
+  });
+});
+
+describe("clientAddress", () => {
+  function requestWith(forwarded?: string) {
+    return new Request(
+      "http://localhost:3000/api/geocode",
+      forwarded === undefined
+        ? undefined
+        : { headers: { "x-forwarded-for": forwarded } },
+    );
+  }
+
+  it("takes the rightmost entry — the one the trusted hop observed", () => {
+    expect(clientAddress(requestWith("203.0.113.7"))).toBe("203.0.113.7");
+    expect(clientAddress(requestWith("198.51.100.1, 203.0.113.7"))).toBe(
+      "203.0.113.7",
+    );
+    expect(clientAddress(requestWith("  198.51.100.1 ,  203.0.113.7  "))).toBe(
+      "203.0.113.7",
+    );
+  });
+
+  it("falls back to a placeholder when no hop supplied one", () => {
+    expect(clientAddress(requestWith())).toBe(UNKNOWN_CLIENT_ADDRESS);
+    expect(clientAddress(requestWith("   "))).toBe(UNKNOWN_CLIENT_ADDRESS);
+    expect(clientAddress(requestWith(" , , "))).toBe(UNKNOWN_CLIENT_ADDRESS);
   });
 });
 
@@ -219,5 +248,74 @@ describe("proxyRequest", () => {
     for (const spy of [log, info, warn, error, debug]) {
       expect(spy).not.toHaveBeenCalled();
     }
+  });
+
+  it("hands FastAPI the caller's address as the last X-Forwarded-For entry", async () => {
+    const { calls, doFetch } = stubFetch(Response.json({}, { status: 200 }));
+    const request = new Request("http://localhost:3000/api/geocode", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        // As a platform proxy leaves it: the client's own claim first, the
+        // address that proxy actually observed last.
+        "x-forwarded-for": "198.51.100.1, 203.0.113.7",
+      },
+      body: JSON.stringify({ address: "Av. Siempre Viva 742" }),
+    });
+
+    await proxyRequest(request, ["geocode"], {
+      baseUrl: "http://localhost:8000",
+      fetch: doFetch,
+    });
+
+    const forwarded = new Headers(calls[0].init.headers);
+    // Set, not relayed: the unverified leftmost claim does not reach FastAPI,
+    // and the value it buckets on is the rightmost entry either way.
+    expect(forwarded.get("x-forwarded-for")).toBe("203.0.113.7");
+  });
+
+  it("still sends a placeholder address when no hop supplied one", async () => {
+    const { calls, doFetch } = stubFetch(Response.json({}, { status: 200 }));
+
+    await proxyRequest(
+      new Request("http://localhost:3000/api/geocode", {
+        method: "POST",
+        body: JSON.stringify({ address: "x" }),
+      }),
+      ["geocode"],
+      { baseUrl: "http://localhost:8000", fetch: doFetch },
+    );
+
+    const forwarded = new Headers(calls[0].init.headers);
+    expect(forwarded.get("x-forwarded-for")).toBe(UNKNOWN_CLIENT_ADDRESS);
+  });
+
+  it("puts nothing but the address in the forwarded headers", async () => {
+    const { calls, doFetch } = stubFetch(Response.json({}, { status: 200 }));
+    const request = new Request("http://localhost:3000/api/simulate", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-forwarded-for": "203.0.113.7",
+        cookie: "session=secret",
+        authorization: "Bearer secret",
+        "x-real-ip": "198.51.100.9",
+      },
+      body: SIMULATE_BODY,
+    });
+
+    await proxyRequest(request, ["simulate"], {
+      baseUrl: "http://localhost:8000",
+      fetch: doFetch,
+    });
+
+    const forwarded = new Headers(calls[0].init.headers);
+    expect([...forwarded.keys()].sort()).toEqual([
+      "accept",
+      "content-type",
+      "x-forwarded-for",
+    ]);
+    // The RUN never leaves the body for a header (MIGRATION.md §4.5).
+    expect(JSON.stringify([...forwarded])).not.toContain(RUN);
   });
 });

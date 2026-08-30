@@ -944,6 +944,110 @@ def test_geocode_rate_limit(client, monkeypatch):
     assert client.post("/geocode", json={"address": "x"}).status_code == 200
 
 
+def _spend_geocode_budget(client, headers=None):
+    """Use up one bucket's budget and return the response that goes over it."""
+    for _ in range(api.GEOCODE_RATE_LIMIT_REQUESTS):
+        response = client.post("/geocode", json={"address": "x"}, headers=headers)
+        assert response.status_code == 200, response.text
+    return client.post("/geocode", json={"address": "x"}, headers=headers)
+
+
+def test_geocode_rate_limit_buckets_by_forwarded_client(client, monkeypatch):
+    """Behind the Next.js proxy the budget is per browser, not per proxy.
+
+    ``request.client.host`` is the proxy for every request, so without
+    X-Forwarded-For one family would exhaust the limit for all of them
+    (MIGRATION.md §9, Phase 2 open item).
+    """
+    monkeypatch.setattr(
+        api, "geocode_chilean_address", lambda address: dict(FAKE_GEOCODE_OK)
+    )
+    # TestClient's peer is "testclient"; treat it as the trusted proxy.
+    monkeypatch.setattr(api, "TRUSTED_PROXY_HOSTS", frozenset({"testclient"}))
+
+    blocked = _spend_geocode_budget(client, {"x-forwarded-for": "203.0.113.7"})
+    assert blocked.status_code == 429
+
+    # A different browser behind the same proxy still has its full budget.
+    other = client.post(
+        "/geocode", json={"address": "x"}, headers={"x-forwarded-for": "203.0.113.8"}
+    )
+    assert other.status_code == 200
+
+    # ...and the first one is still blocked.
+    assert (
+        client.post(
+            "/geocode",
+            json={"address": "x"},
+            headers={"x-forwarded-for": "203.0.113.7"},
+        ).status_code
+        == 429
+    )
+
+
+def test_geocode_rate_limit_uses_the_rightmost_forwarded_entry(client, monkeypatch):
+    """The trusted hop appends the address it saw; earlier entries are claims."""
+    monkeypatch.setattr(
+        api, "geocode_chilean_address", lambda address: dict(FAKE_GEOCODE_OK)
+    )
+    monkeypatch.setattr(api, "TRUSTED_PROXY_HOSTS", frozenset({"testclient"}))
+
+    blocked = _spend_geocode_budget(
+        client, {"x-forwarded-for": "198.51.100.1, 203.0.113.7"}
+    )
+    assert blocked.status_code == 429
+
+    # Rewriting only the leftmost (client-supplied) entry buys nothing: the
+    # rightmost entry is what identifies the caller.
+    for spoofed in ("198.51.100.99", "203.0.113.8"):
+        assert (
+            client.post(
+                "/geocode",
+                json={"address": "x"},
+                headers={"x-forwarded-for": f"{spoofed}, 203.0.113.7"},
+            ).status_code
+            == 429
+        )
+
+
+def test_geocode_rate_limit_ignores_forwarded_header_from_untrusted_peer(
+    client, monkeypatch
+):
+    """A direct caller cannot mint a fresh budget by inventing the header."""
+    monkeypatch.setattr(
+        api, "geocode_chilean_address", lambda address: dict(FAKE_GEOCODE_OK)
+    )
+    # "testclient" is not a trusted proxy here — the default loopback set.
+    monkeypatch.setattr(api, "TRUSTED_PROXY_HOSTS", api._parse_trusted_proxies(None))
+
+    blocked = _spend_geocode_budget(client, {"x-forwarded-for": "203.0.113.7"})
+    assert blocked.status_code == 429
+
+    # Same socket peer, a new claimed address: still the same bucket.
+    assert (
+        client.post(
+            "/geocode",
+            json={"address": "x"},
+            headers={"x-forwarded-for": "203.0.113.8"},
+        ).status_code
+        == 429
+    )
+    # And with no header at all.
+    assert client.post("/geocode", json={"address": "x"}).status_code == 429
+
+
+def test_trusted_proxies_default_and_env_parsing():
+    assert api._parse_trusted_proxies(None) == frozenset({"127.0.0.1", "::1"})
+    assert api._parse_trusted_proxies("   ") == frozenset({"127.0.0.1", "::1"})
+    assert api._parse_trusted_proxies("10.0.0.1, 10.0.0.2 ,") == frozenset(
+        {"10.0.0.1", "10.0.0.2"}
+    )
+    # Hosts are matched case-insensitively (IPv6 hex, hostnames).
+    assert api._parse_trusted_proxies("::FFFF:127.0.0.1") == frozenset(
+        {"::ffff:127.0.0.1"}
+    )
+
+
 # ---------------------------------------------------------------------------
 # OpenAPI export
 # ---------------------------------------------------------------------------

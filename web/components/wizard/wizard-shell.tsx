@@ -2,6 +2,7 @@
 
 import * as React from "react";
 
+import { TooltipProvider } from "@/components/ui/tooltip";
 import type { Meta } from "@/lib/api/types";
 import { MetaProvider } from "@/lib/meta";
 import { hydrateWizardStore } from "@/lib/store/wizard";
@@ -18,9 +19,16 @@ import { WizardNav } from "./wizard-nav";
  * `app/[locale]/(wizard)/layout.tsx` stays a server component so it can await
  * `fetchMeta()`; this is the boundary where everything becomes interactive.
  *
- * The centred column, its max width and the page's `<main>` and `<h1>` belong to
+ * The centred column, its max width and the page's `<main>` belong to
  * `app/[locale]/layout.tsx` — the prototype's `layout="centered"` — so this
- * component only stacks the wizard's own three parts inside it.
+ * component only stacks the wizard's own three parts inside it. The page's
+ * single `<h1>` is the step title, rendered by `step-page.tsx`.
+ *
+ * `TooltipProvider` is mounted once here rather than per step: Radix keeps the
+ * "skip the open delay while another tooltip was just open" timer in that
+ * provider, so one provider around the whole wizard is what makes hovering
+ * along a row of info icons behave as a single group. Steps render bare
+ * `Tooltip`s and never their own provider.
  */
 export function WizardShell({
   meta,
@@ -31,7 +39,9 @@ export function WizardShell({
 }) {
   return (
     <MetaProvider meta={meta}>
-      <WizardShellInner>{children}</WizardShellInner>
+      <TooltipProvider>
+        <WizardShellInner>{children}</WizardShellInner>
+      </TooltipProvider>
     </MetaProvider>
   );
 }

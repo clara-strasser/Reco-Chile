@@ -51,6 +51,8 @@
     "seats": "Seats",
     "applicants": "Applicants in the historical calibration",
     "strictOrder": "Strict order #",
+    "strictOrderFull": "Strict order",
+    "flaggedAtRisk": "Flagged at risk",
     "referenceRank": "Reference rank"
   },
   "detail": {
@@ -58,6 +60,10 @@
     "title": "Wish-level details",
     "note": "The final chance accounts for every program placed above each preference.",
     "technicalNote": "MTB ranks, priority tiers, seats and historical applicant counts are calculation details. They should not be interpreted as official SAE results."
+  },
+  "errors": {
+    "title": "We could not calculate the result",
+    "retry": "Calculate again"
   },
   "explain": {
     "chanceTitle": "Chance if considered vs. final chance",

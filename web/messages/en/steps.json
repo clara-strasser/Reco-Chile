@@ -6,5 +6,7 @@
   "back": "Back",
   "continue": "Continue",
   "progress": "Step {current} of {total}",
-  "locked": "Complete the previous steps to continue."
+  "locked": "Complete the previous steps to continue.",
+  "navLabel": "Wizard steps",
+  "pending": "Working…"
 }

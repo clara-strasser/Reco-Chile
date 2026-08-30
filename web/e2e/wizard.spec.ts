@@ -40,8 +40,13 @@ function copy(locale: keyof typeof MESSAGES, key: string): string {
   return value;
 }
 
+/**
+ * The step title is the page's single `<h1>` (`components/wizard/step-page.tsx`);
+ * the application title in the header is a `<p>` brand element, not a heading.
+ * Asserting the level is what keeps that contract from silently regressing.
+ */
 function stepHeading(locale: keyof typeof MESSAGES, key: string) {
-  return { level: 2 as const, name: copy(locale, key) };
+  return { level: 1 as const, name: copy(locale, key) };
 }
 
 test.describe("wizard shell", () => {
@@ -140,15 +145,18 @@ test.describe("wizard shell", () => {
   test("step 2 renders live data from /meta", async ({ page }) => {
     await page.goto("/es/student");
     await page.getByLabel(copy("es", "student.idLabel")).fill(VALID_RUN);
+    // The region select only exists in the guided branch, and it is the step's
+    // one control filled straight from `/meta` (the Phase 2 scaffold printed
+    // the region count instead; the filter panel replaced it in Phase 3).
+    await page.locator("#list-status-no").click();
     await page.getByTestId("wizard-continue").click();
     await page.waitForURL("**/es/list");
 
     // Proves the whole data path: FastAPI -> fetchMeta() on the server ->
-    // MetaProvider -> useMeta() in the client tree. Chile has 16 regions, so the
-    // count is a positive number for any correctly loaded calibration file.
-    const regions = page.getByTestId("meta-regions");
-    await expect(regions).toBeVisible();
-    expect(Number(await regions.innerText())).toBeGreaterThan(0);
+    // MetaProvider -> useMeta() in the client tree. Chile has 16 regions, so a
+    // correctly loaded calibration file offers "all regions" plus many more.
+    await page.getByTestId("filter-region").click();
+    expect(await page.getByRole("option").count()).toBeGreaterThan(1);
   });
 
   test("step 2 keeps its own gate closed while the list is empty", async ({

@@ -70,7 +70,8 @@
     "add": "Agregar este programa al final de mi lista",
     "assumption": "Esta estimación supone que el programa se agrega al final y que no se declara ninguna prioridad especial.",
     "riskLegend": "Los colores de las filas reflejan el riesgo sin cupo proyectado después de agregar el programa: verde por debajo del umbral suave ({soft}), naranja entre los umbrales suave y duro, y rojo en o por encima del umbral duro ({hard}).",
-    "flaggedAtRisk": "Marcado en riesgo"
+    "flaggedAtRisk": "Marcado en riesgo",
+    "noInformation": "Sin información"
   },
   "criteria": {
     "criterion": "Criterio",

@@ -6,8 +6,9 @@ the FastAPI backend (`../api.py`) on top of the `sae_app/` engine. See
 `../MIGRATION.md` for the plan and the API contract, `../CLAUDE.md` for the
 conventions.
 
-Status: **Phase 2 scaffold.** The wizard routes, i18n, store, and API client
-land in the following stages.
+Status: **Phase 3–5 in progress.** The wizard routes, i18n catalogues, zustand
+store, typed API client and `/api` proxy are in place; the four steps are being
+filled in. See `../MIGRATION.md` §9 for the phase log.
 
 ## Requirements
 
@@ -33,10 +34,14 @@ cp .env.example .env.local
 | -------------- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `API_BASE_URL` | `http://localhost:8000` | Origin of the FastAPI service. Server-side only — the browser reaches the API through the Next.js proxy route, never directly. |
 
+`API_BASE_URL` is read **only** in Node (`lib/api/proxy.ts`, `lib/meta/fetch-meta.ts`).
+It has no `NEXT_PUBLIC_` twin on purpose: the Python port is never named in
+anything the browser downloads, so it does not have to be reachable publicly.
+
 Start the backend in the repository root first:
 
 ```bash
-uvicorn api:app --reload
+.venv/bin/python -m uvicorn api:app --reload
 ```
 
 ## Develop
@@ -50,10 +55,20 @@ pnpm dev              # http://localhost:3000
 ```bash
 pnpm test             # Vitest (jsdom + @testing-library/react), single run
 pnpm test:watch       # Vitest in watch mode
-pnpm e2e              # Playwright (chromium); starts `pnpm dev` itself
+pnpm e2e              # Playwright (chromium); starts both halves of the stack
 ```
 
-`pnpm e2e` reuses an already-running dev server on port 3000 if there is one.
+`pnpm e2e` starts **both** servers itself (`playwright.config.ts`, `webServer`):
+
+- FastAPI — `cd .. && .venv/bin/python -m uvicorn api:app --host 127.0.0.1 --port 8000`,
+  waited on via `/health`. It runs the interpreter of the repository's own
+  `.venv` by path, never a bare `python3`: on macOS that resolves to system
+  Python 3.9, which cannot import `api.py` (see `../CLAUDE.md`). So `.venv` must
+  exist and have `requirements.txt` installed before the first `pnpm e2e`.
+- Next.js — `pnpm dev` on port 3000.
+
+Locally an already-running pair is reused (`reuseExistingServer: !CI`); under CI
+a stale server is never trusted.
 
 ## Check
 
@@ -63,6 +78,69 @@ pnpm format           # Prettier, writes
 pnpm format:check     # Prettier, verifies
 pnpm build            # production build
 ```
+
+## Talking to the API
+
+Three layers, and nothing skips one.
+
+### 1. `openapi.json` → `schema.d.ts`
+
+`lib/api/openapi.json` is the FastAPI schema, exported from the Python side and
+committed. Regenerate it after any change to `../api.py`, then regenerate the
+TypeScript types:
+
+```bash
+../.venv/bin/python ../scripts/export_openapi.py   # rewrites lib/api/openapi.json
+pnpm api:types                                     # openapi.json -> lib/api/schema.d.ts
+```
+
+`pnpm api:types` runs `openapi-typescript` and then Prettier over the output.
+Neither `openapi.json` nor `schema.d.ts` is ever hand-edited — an endpoint is
+added in Python and regenerated here.
+
+### 2. `@/lib/api` — the typed client
+
+`lib/api/client.ts` derives every method name, query parameter, request body and
+200 body from `schema.d.ts`, so an endpoint that does not exist does not
+compile:
+
+```ts
+import { api, ApiError } from "@/lib/api";
+
+const meta = await api.get("/meta", { lang: "es" });
+const program = await api.get("/programs/{program_id}", {
+  path: { program_id: "1234:5" },
+});
+const result = await api.post("/simulate", body, { lang: locale });
+```
+
+`lang` is sent as `?lang=` and mirrored into `Accept-Language` (MIGRATION.md §3).
+A non-2xx response throws `ApiError`, which carries the contract's
+`{error_key, message, params}` envelope: show `message`, branch on `errorKey`.
+A transport failure throws the same class with `errorKey === NETWORK_ERROR_KEY`.
+
+The default `api` instance targets the same-origin proxy `/api`. Server
+components have no origin to resolve a relative URL against and use
+`createApiClient({ baseUrl: upstreamBaseUrl() })` instead — see
+`lib/meta/fetch-meta.ts`.
+
+### 3. `/api/*` — the same-origin proxy
+
+`app/api/[...path]/route.ts` (logic in `lib/api/proxy.ts`) forwards
+`/api/<anything>` to `${API_BASE_URL}/<anything>`, query string included, and
+streams status and JSON body back. One origin means no CORS in production, the
+RUN/IPE stays first-party from the browser's point of view, and the FastAPI port
+need not be published (MIGRATION.md §2).
+
+Only `accept`, `accept-language` and `content-type` are forwarded upstream;
+only `content-type` and `retry-after` come back. **Nothing in the proxy logs a
+request body**, and nothing may be added that does: bodies carry the student's
+RUN/IPE (`/simulate`, `/recommend`) and the family's home address (`/geocode`)
+— MIGRATION.md §4.5.
+
+Not to be confused with `proxy.ts` in the project root: that is Next 16's
+renamed Middleware convention (locale routing), and it deliberately does not
+match `/api/*`.
 
 ## Theme
 
@@ -79,10 +157,19 @@ documented exception: `button.tsx` uses `rounded-full` throughout to reproduce
 ## Layout
 
 ```
-app/                 routes (wizard routes arrive in the next stage)
-components/ui/       shadcn primitives (generated)
-lib/api/openapi.json exported FastAPI schema — regenerate with
-                     `python ../scripts/export_openapi.py`, never hand-edit
-lib/utils.ts         `cn`
-e2e/                 Playwright specs
+app/[locale]/            locale layout: <html lang>, header, brand, switcher
+app/[locale]/(wizard)/   stepper + step guard + Back/Continue; the 4 steps;
+                         error.tsx (localized boundary around the steps)
+app/api/[...path]/       same-origin proxy to FastAPI
+components/ui/           shadcn primitives (generated)
+components/wizard/       stepper, step frame, nav, guard, step bodies
+lib/api/                 openapi.json + generated schema.d.ts + typed client
+lib/meta/                /meta fetched server-side, shared through context
+lib/store/wizard.ts      zustand store (sessionStorage, partial persistence)
+messages/{es,en}/        one JSON file per namespace, merged in index.ts
+e2e/                     Playwright specs
 ```
+
+Headings: the step title rendered by `components/wizard/step-page.tsx` is the
+page's single `<h1>`. The application title in the header is a `<p>` brand
+element, because it repeats on every route.

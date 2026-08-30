@@ -72,6 +72,20 @@ export type WizardState = {
   simulationStale: boolean;
   home: GeocodeResult | null;
   recommendationCount: number;
+  /**
+   * `/meta.max_wishes` — the server's cap on the length of a preference list
+   * (`MAX_WISHES`). Memory-only and `null` until a component that has `/meta`
+   * calls `setMaxWishes`, exactly like `maxOrders`: with no limit known, the
+   * client simply does not pre-check and the server's 422 stays the only gate.
+   */
+  maxWishes: number | null;
+  /**
+   * How many recommendations the last `appendRecommendations` added, for the
+   * success notice at the top of step 2 (`recommendations_added_notice` in the
+   * prototype). Transient: never persisted, and the step that shows it clears
+   * it with `clearRecommendationsNotice()` — the port of Streamlit's `pop`.
+   */
+  recommendationsAddedNotice: number;
 };
 
 export type WizardActions = {
@@ -95,6 +109,9 @@ export type WizardActions = {
   setSimulation: (simulation: SimulationResponse | null) => void;
   setHome: (home: GeocodeResult | null) => void;
   setRecommendationCount: (count: number) => void;
+  setMaxWishes: (maxWishes: number | null) => void;
+  /** Acknowledge the "N recommendations added" notice (Streamlit's `pop`). */
+  clearRecommendationsNotice: () => void;
   reset: () => void;
 };
 
@@ -275,6 +292,8 @@ export function initialWizardState(): WizardState {
     simulationStale: true,
     home: null,
     recommendationCount: DEFAULT_RECOMMENDATION_COUNT,
+    maxWishes: null,
+    recommendationsAddedNotice: 0,
   };
 }
 
@@ -429,7 +448,11 @@ export const useWizardStore = create<WizardStore>()(
           group += 1;
         }
         if (added.length === 0) return;
-        set({ wishes: [...state.wishes, ...added], ...INVALIDATED });
+        set({
+          wishes: [...state.wishes, ...added],
+          recommendationsAddedNotice: added.length,
+          ...INVALIDATED,
+        });
       },
 
       setSimulation: (simulation) => {
@@ -451,6 +474,22 @@ export const useWizardStore = create<WizardStore>()(
         });
       },
 
+      setMaxWishes: (maxWishes) => {
+        const next =
+          maxWishes === null || !Number.isFinite(maxWishes)
+            ? null
+            : Math.max(0, Math.trunc(maxWishes));
+        if (get().maxWishes === next) return;
+        // A limit is a display/gating fact, not an input: it never invalidates
+        // a simulation the server already accepted.
+        set({ maxWishes: next });
+      },
+
+      clearRecommendationsNotice: () => {
+        if (get().recommendationsAddedNotice === 0) return;
+        set({ recommendationsAddedNotice: 0 });
+      },
+
       reset: () => {
         set(initialWizardState());
       },
@@ -459,7 +498,10 @@ export const useWizardStore = create<WizardStore>()(
       name: WIZARD_PERSIST_KEY,
       version: WIZARD_PERSIST_VERSION,
       storage: createJSONStorage(() => wizardSessionStorage),
-      // NEVER add studentId, simulation or home here (§4.5).
+      // NEVER add studentId, simulation or home here (§4.5). `maxWishes` and
+      // `recommendationsAddedNotice` stay out too: the first is a fact about
+      // the live API, the second a one-shot notice that must not survive a
+      // reload.
       partialize: (state): PersistedWizardState => ({
         wishes: state.wishes,
         listExists: state.listExists,
@@ -490,6 +532,9 @@ export type StepGateOptions = {
   /** `/meta.max_exact_equiv_permutations`. When unknown, the order-count gate
    *  is not applied client-side and the server's 422 is the only check. */
   maxOrders?: number | bigint | null;
+  /** `/meta.max_wishes`. Overrides `state.maxWishes`; when neither is known the
+   *  length gate is not applied client-side and `/simulate` rejects instead. */
+  maxWishes?: number | null;
 };
 
 /** Step 1: the RUN/IPE passes the client pre-check (display only — the server
@@ -500,13 +545,21 @@ export function isStudentIdValid(
   return isValidStudentIdentifier(state.studentId);
 }
 
-/** Step 2: at least one program and, in ties mode, an order count within the
- *  server's exact-evaluation limit. */
+/**
+ * Step 2: at least one program, no more than `/meta.max_wishes` of them, and —
+ * in ties mode — an order count within the server's exact-evaluation limit.
+ *
+ * Both caps are server-enforced (`MAX_WISHES`, `MAX_EXACT_EQUIV_PERMUTATIONS`);
+ * checking them here only lets Continue disable itself with the same message
+ * instead of sending a request that is certain to 422 (MIGRATION.md §3).
+ */
 export function isWishListValid(
-  state: Pick<WizardState, "wishes" | "useEquivalenceClasses">,
+  state: Pick<WizardState, "wishes" | "useEquivalenceClasses" | "maxWishes">,
   options: StepGateOptions = {},
 ): boolean {
   if (state.wishes.length === 0) return false;
+  const maxWishes = options.maxWishes ?? state.maxWishes;
+  if (maxWishes != null && state.wishes.length > maxWishes) return false;
   const { maxOrders } = options;
   if (!state.useEquivalenceClasses || maxOrders == null) return true;
   return !equivalenceOrderCountExceeds(state.wishes, maxOrders);

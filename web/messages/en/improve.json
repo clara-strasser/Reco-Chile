@@ -70,7 +70,8 @@
     "add": "Add this program to the end of my list",
     "assumption": "This estimate assumes the program is appended at the end and no special priority is declared.",
     "riskLegend": "Row colors reflect the projected unmatched risk after appending the program: green below the soft threshold ({soft}), orange between the soft and hard thresholds, and red at or above the hard threshold ({hard}).",
-    "flaggedAtRisk": "Flagged at risk"
+    "flaggedAtRisk": "Flagged at risk",
+    "noInformation": "No information"
   },
   "criteria": {
     "criterion": "Criterion",

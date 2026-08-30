@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeftIcon, ArrowRightIcon } from "lucide-react";
+import { ArrowLeftIcon, ArrowRightIcon, Loader2Icon } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
@@ -16,17 +16,27 @@ import { nextSlug, previousSlug, stepPath, type StepSlug } from "./steps";
  * to the edges of the locale layout's padded column while the buttons stay
  * aligned with the step content.
  *
- * Continue is a button rather than a link because it has a disabled state: a
+ * Continue is a button rather than a link because it has two disabled states: a
  * disabled link is not focusable and would simply drop out of the tab order
- * whenever the step's gate does not hold.
+ * whenever the step's gate does not hold, and `pending` has to keep the same
+ * element in place so focus survives the wait.
  */
 export function WizardNav({
   slug,
   canContinue,
+  pending = false,
 }: {
   slug: StepSlug;
   /** `canContinue` for the live store state (§4.1, "Continue enabled when"). */
   canContinue: boolean;
+  /**
+   * A request the step must finish before moving on is in flight — the result
+   * step's `/simulate` (MIGRATION.md §7, Phase 4). Continue keeps its label and
+   * its place in the tab order, swaps the arrow for a spinner and announces
+   * itself busy; it is disabled meanwhile so a second press cannot queue a
+   * second run.
+   */
+  pending?: boolean;
 }) {
   const t = useTranslations("steps");
   const router = useRouter();
@@ -52,11 +62,25 @@ export function WizardNav({
         <Button
           size="lg"
           data-testid="wizard-continue"
-          disabled={!canContinue}
+          data-pending={pending ? "" : undefined}
+          disabled={!canContinue || pending}
+          aria-busy={pending || undefined}
           onClick={() => router.push(stepPath(forward))}
         >
           {t("continue")}
-          <ArrowRightIcon aria-hidden="true" data-icon="inline-end" />
+          {pending ? (
+            <>
+              <Loader2Icon
+                aria-hidden="true"
+                data-icon="inline-end"
+                className="animate-spin"
+              />
+              {/* `aria-busy` alone is not announced by every screen reader. */}
+              <span className="sr-only">{t("pending")}</span>
+            </>
+          ) : (
+            <ArrowRightIcon aria-hidden="true" data-icon="inline-end" />
+          )}
         </Button>
       ) : null}
     </div>

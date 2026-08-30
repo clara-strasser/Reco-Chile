@@ -4,8 +4,9 @@
   "idPlaceholder": "12.345.678-5 / 111222333-4",
   "idHelp": "Enter a valid RUN with its modulo-11 check digit, or a nine-digit IPE with its numeric verifier digit. Dots and the hyphen are optional.",
   "idHelpLong": "Used to compute the SHA-256 percentile specific to each school. Enter a valid RUN with its modulo-11 check digit, or a nine-digit IPE with its numeric verifier digit. Dots and the hyphen are optional.",
-  "idValid": "Valid format.",
+  "idValid": "Valid {kind} format.",
   "idRequiredHint": "Enter the student's RUN/IPE to unlock the analysis.",
+  "privacyNote": "The calculation runs on this application's server. The RUN/IPE is not stored in the browser and never appears in the web address, and a home address is sent to OpenStreetMap only when the family explicitly asks for it in step 4.",
   "why": {
     "title": "Why do we ask for this?",
     "body": "The identifier is used to reproduce the school-specific MTB tie-break calculation. It does not change or submit the student's official SAE application.",

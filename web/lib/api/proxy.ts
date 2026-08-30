@@ -14,6 +14,11 @@
  * string; only method, status and path may ever be observed, and nothing here
  * writes even those.
  *
+ * Request headers are rebuilt, not relayed: only the three in
+ * `FORWARDED_REQUEST_HEADERS` cross over (no cookies, no authorization), plus
+ * one `X-Forwarded-For` this hop derives itself so FastAPI's per-IP geocoding
+ * budget can be per browser rather than per proxy — see `clientAddress`.
+ *
  * The URL building is kept as a pure function so it can be unit-tested without
  * a running Next.js server.
  *
@@ -40,6 +45,14 @@ const FORWARDED_REQUEST_HEADERS = [
   "accept-language",
   "content-type",
 ] as const;
+
+/**
+ * Placeholder client address for a request whose origin cannot be established
+ * — a direct browser→Next connection (`pnpm dev`), or a platform that does not
+ * populate `X-Forwarded-For`. Every such caller shares one rate-limit bucket
+ * upstream, which is exactly what happened before this header existed.
+ */
+export const UNKNOWN_CLIENT_ADDRESS = "unknown";
 
 /** Response headers forwarded FastAPI → browser. */
 const FORWARDED_RESPONSE_HEADERS = ["content-type", "retry-after"] as const;
@@ -81,6 +94,26 @@ export function buildUpstreamUrl(
   return `${baseUrl.replace(/\/+$/, "")}/${encoded.join("/")}${query}`;
 }
 
+/**
+ * The browser's address as the hop in front of Next.js saw it.
+ *
+ * Next 16 exposes no socket address to a route handler (`NextRequest.ip` was
+ * removed and there is no `connection()` equivalent for it), so the only
+ * source is the `X-Forwarded-For` a platform proxy set. Its *rightmost* entry
+ * is the address that proxy observed; entries to its left are whatever the
+ * client claimed and are worth nothing. Without such a proxy in front there is
+ * no trustworthy value and none is invented.
+ */
+export function clientAddress(request: Request): string {
+  const forwarded = request.headers.get("x-forwarded-for");
+  if (!forwarded) return UNKNOWN_CLIENT_ADDRESS;
+  const entries = forwarded
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter((entry) => entry.length > 0);
+  return entries.at(-1) ?? UNKNOWN_CLIENT_ADDRESS;
+}
+
 function forwardedRequestHeaders(request: Request): Headers {
   const headers = new Headers();
   for (const name of FORWARDED_REQUEST_HEADERS) {
@@ -88,6 +121,17 @@ function forwardedRequestHeaders(request: Request): Headers {
     if (value) headers.set(name, value);
   }
   if (!headers.has("accept")) headers.set("accept", "application/json");
+  // FastAPI's `_client_key` reads the rightmost X-Forwarded-For entry as "the
+  // caller as the trusted hop saw it" and buckets /geocode's per-IP budget by
+  // it. Without this header every browser shares the proxy's own address and
+  // one family can spend the whole budget for everyone.
+  //
+  // The header is *set*, not relayed and extended: the incoming chain's
+  // leftmost entries are unverified client claims, and Next 16 gives a route
+  // handler no peer address of its own to append, so the one derived value is
+  // all this hop can honestly assert. It is an address — no part of the
+  // request body ever reaches a header (MIGRATION.md §4.5).
+  headers.set("x-forwarded-for", clientAddress(request));
   return headers;
 }
 

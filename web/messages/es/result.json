@@ -51,6 +51,8 @@
     "seats": "Cupos",
     "applicants": "Postulantes en la calibración histórica",
     "strictOrder": "Orden estricto #",
+    "strictOrderFull": "Orden estricto",
+    "flaggedAtRisk": "Marcado en riesgo",
     "referenceRank": "Ranking de referencia"
   },
   "detail": {
@@ -58,6 +60,10 @@
     "title": "Detalle por preferencia",
     "note": "La probabilidad final considera todos los programas ubicados por encima de cada preferencia.",
     "technicalNote": "Los rankings MTB, niveles de prioridad, cupos y cantidades históricas de postulantes son detalles del cálculo. No deben interpretarse como resultados oficiales del SAE."
+  },
+  "errors": {
+    "title": "No pudimos calcular el resultado",
+    "retry": "Volver a calcular"
   },
   "explain": {
     "chanceTitle": "Probabilidad si es considerado vs. probabilidad final",

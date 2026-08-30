@@ -10,6 +10,7 @@ import {
   equivalenceOrderCountExceeds,
   hydrateWizardStore,
   initialWizardState,
+  isWishListValid,
   lastAllowedStep,
   makeWish,
   nextEquivalenceGroup,
@@ -552,6 +553,113 @@ describe("step gates §4.1", () => {
   });
 });
 
+describe("§4.2 — the recommendations-added notice", () => {
+  it("starts at zero and counts what was actually appended", () => {
+    seed();
+    expect(store().recommendationsAddedNotice).toBe(0);
+
+    store().appendRecommendations(["2001:R", "2002:S"]);
+    expect(store().recommendationsAddedNotice).toBe(2);
+  });
+
+  it("counts only the new ids, and stays put when nothing was added", () => {
+    seed();
+    // "1001:A" is already in the list, the blank id is not an id at all.
+    store().appendRecommendations(["1001:A", " ", "2001:R"]);
+    expect(store().recommendationsAddedNotice).toBe(1);
+
+    store().appendRecommendations(["1001:A"]);
+    expect(store().recommendationsAddedNotice).toBe(1);
+  });
+
+  it("is cleared by the step that showed it, like Streamlit's pop", () => {
+    seed();
+    store().appendRecommendations(["2001:R"]);
+    store().clearRecommendationsNotice();
+    expect(store().recommendationsAddedNotice).toBe(0);
+
+    // Idempotent: a second render must not fight the store.
+    const before = store();
+    store().clearRecommendationsNotice();
+    expect(store().recommendationsAddedNotice).toBe(0);
+    expect(store()).toBe(before);
+  });
+
+  it("does not survive a reset", () => {
+    seed();
+    store().appendRecommendations(["2001:R"]);
+    store().reset();
+    expect(store().recommendationsAddedNotice).toBe(0);
+  });
+});
+
+describe("§4.1 — the /meta.max_wishes gate on step 2", () => {
+  const fill = (n: number) => {
+    store().setStudentId(VALID_RUN);
+    for (let i = 0; i < n; i += 1) store().addWish(`10${i}:P`);
+  };
+
+  it("is not applied while the limit is unknown", () => {
+    fill(4);
+    expect(store().maxWishes).toBeNull();
+    expect(isWishListValid(store())).toBe(true);
+    expect(canContinue(store(), 2)).toBe(true);
+  });
+
+  it("allows a list exactly at the limit and blocks one program more", () => {
+    fill(3);
+    store().setMaxWishes(3);
+    expect(isWishListValid(store())).toBe(true);
+    expect(canContinue(store(), 2)).toBe(true);
+
+    store().addWish("999:P");
+    expect(isWishListValid(store())).toBe(false);
+    expect(canContinue(store(), 2)).toBe(false);
+    // An over-long list also closes the steps behind it.
+    expect(canEnterStep(store(), 3)).toBe(false);
+
+    store().removeWish("999:P");
+    expect(canContinue(store(), 2)).toBe(true);
+  });
+
+  it("takes the limit from the options over the stored one", () => {
+    fill(3);
+    store().setMaxWishes(30);
+    expect(isWishListValid(store(), { maxWishes: 2 })).toBe(false);
+    expect(canContinue(store(), 2, { maxWishes: 2 })).toBe(false);
+    expect(canContinue(store(), 2, { maxWishes: 3 })).toBe(true);
+  });
+
+  it("still needs at least one program, and keeps the order-count gate", () => {
+    store().setStudentId(VALID_RUN);
+    store().setMaxWishes(30);
+    expect(isWishListValid(store())).toBe(false);
+
+    store().setUseEquivalenceClasses(true);
+    for (let i = 0; i < 8; i += 1) store().addWish(`10${i}:P`);
+    for (const wish of store().wishes) store().setWishGroup(wish.programId, 1);
+    // 8 wishes is within max_wishes, but 8! = 40320 orders is not.
+    expect(isWishListValid(store(), { maxOrders: 10000 })).toBe(false);
+  });
+
+  it("normalizes and forgets the limit like the transient it is", () => {
+    fill(1);
+    store().setMaxWishes(30.7);
+    expect(store().maxWishes).toBe(30);
+    store().setMaxWishes(Number.NaN);
+    expect(store().maxWishes).toBeNull();
+
+    store().setMaxWishes(30);
+    // A limit is not an input: it cannot invalidate an accepted simulation.
+    store().setSimulation(SIMULATION);
+    store().setMaxWishes(30);
+    expect(store().simulation).toBe(SIMULATION);
+
+    store().reset();
+    expect(store().maxWishes).toBeNull();
+  });
+});
+
 describe("sessionStorage persistence §4.2", () => {
   const persisted = () => {
     const raw = window.sessionStorage.getItem(WIZARD_PERSIST_KEY);
@@ -592,6 +700,16 @@ describe("sessionStorage persistence §4.2", () => {
     expect(snapshot.state).not.toHaveProperty("simulation");
     expect(snapshot.state).not.toHaveProperty("home");
     expect(snapshot.state).not.toHaveProperty("recommendationCount");
+  });
+
+  it("never writes the API limit or the one-shot recommendation notice", () => {
+    seed();
+    store().setMaxWishes(30);
+    store().appendRecommendations(["2001:R"]);
+
+    const snapshot = persisted();
+    expect(snapshot.state).not.toHaveProperty("maxWishes");
+    expect(snapshot.state).not.toHaveProperty("recommendationsAddedNotice");
   });
 
   it("rehydrates the list into a fresh module instance, without the secrets", async () => {

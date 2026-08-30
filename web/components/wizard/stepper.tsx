@@ -23,10 +23,19 @@ type StepperProps = {
 /**
  * The `○────●────○────○` rail of MIGRATION.md §4.1.
  *
- * Every step is a link, but only while its "can enter" condition holds; a locked
- * step renders as inert text carrying `steps.locked` as its tooltip, so keyboard
- * and screen-reader users meet the same gate — and the same explanation — as the
- * guard enforces on the route.
+ * Every step is a link, but only while its "can enter" condition holds. A step
+ * that cannot be entered renders as inert text marked `aria-disabled`, carrying
+ * `steps.locked` as its tooltip, so keyboard and screen-reader users meet the
+ * same gate — and the same explanation — as the guard enforces on the route. It
+ * is deliberately *not* given `role="link"`: an assistive-technology user must
+ * not be offered a link that goes nowhere, and the rail's link count is what
+ * `e2e/wizard.spec.ts` asserts a locked step by.
+ *
+ * The rail is a named `navigation` landmark (`steps.navLabel`) so it can be
+ * skipped to, and separately reachable from the locale switcher's own landmark;
+ * `steps.progress` rides along as screen-reader-only text because "step 2 of 4"
+ * is otherwise only conveyed by the marker styling. The current step is the one
+ * carrying `aria-current="step"`.
  *
  * Mobile first: four numbered markers stay on one row down to 360 px, with the
  * labels beneath them shrinking rather than wrapping the rail.
@@ -36,17 +45,21 @@ export function Stepper({ current, canEnter }: StepperProps) {
   const currentIndex = STEP_SLUGS.indexOf(current);
 
   return (
-    <nav
-      aria-label={t("progress", {
-        current: currentIndex + 1,
-        total: STEP_SLUGS.length,
-      })}
-    >
+    <nav aria-label={t("navLabel")}>
+      <p className="sr-only">
+        {t("progress", {
+          current: currentIndex + 1,
+          total: STEP_SLUGS.length,
+        })}
+      </p>
       <ol className="flex items-start">
         {STEP_SLUGS.map((slug, index) => {
           const isCurrent = slug === current;
           const isDone = index < currentIndex;
-          const isLink = canEnter(slug) && !isCurrent;
+          // "Locked" is about the gate only: the current step is never a link
+          // (it is already here), but it is not disabled either.
+          const isLocked = !canEnter(slug);
+          const isLink = !isLocked && !isCurrent;
           const label = t(STEP_LABEL_KEY[slug]);
 
           const marker = (
@@ -106,7 +119,10 @@ export function Stepper({ current, canEnter }: StepperProps) {
                     {marker}
                   </Link>
                 ) : (
-                  <span title={isCurrent ? undefined : t("locked")}>
+                  <span
+                    aria-disabled={isLocked ? true : undefined}
+                    title={isLocked ? t("locked") : undefined}
+                  >
                     {marker}
                   </span>
                 )}

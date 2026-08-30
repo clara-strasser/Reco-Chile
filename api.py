@@ -20,6 +20,7 @@ Run with: uvicorn api:app --reload
 from __future__ import annotations
 
 import hashlib
+import os
 import threading
 import time
 from contextlib import asynccontextmanager
@@ -139,6 +140,13 @@ MAX_REPORTED_VALIDATION_PROBLEMS = 10
 # state (MIGRATION.md §5.6).
 GEOCODE_RATE_LIMIT_REQUESTS = 10
 GEOCODE_RATE_LIMIT_WINDOW_SECONDS = 60.0
+
+# Hosts whose X-Forwarded-For header may be believed. In the deployment of
+# MIGRATION.md §2 the only client of this service is the Next.js proxy on the
+# same host, so every request arrives with request.client.host == the proxy and
+# the raw socket address is useless as a rate-limit key. Override with
+# SAE_TRUSTED_PROXIES (comma-separated) when the proxy sits on another host.
+DEFAULT_TRUSTED_PROXIES = "127.0.0.1,::1"
 
 # Literal outcome code for "no program was available"; never translated on the
 # wire (the frontend owns the display string).
@@ -424,9 +432,54 @@ _GEOCODE_RATE_LIMITER = _FixedWindowRateLimiter(
 )
 
 
+def _parse_trusted_proxies(raw: str | None) -> frozenset[str]:
+    """Parse SAE_TRUSTED_PROXIES into a set of hosts, falling back to loopback."""
+    value = (raw or "").strip()
+    if not value:
+        value = DEFAULT_TRUSTED_PROXIES
+    return frozenset(
+        host.strip().lower() for host in value.split(",") if host.strip()
+    )
+
+
+TRUSTED_PROXY_HOSTS = _parse_trusted_proxies(os.environ.get("SAE_TRUSTED_PROXIES"))
+
+
+def _forwarded_for_entries(request: Request) -> list[str]:
+    """Every X-Forwarded-For value, left to right, across repeated headers.
+
+    RFC 7239 makes repeated headers equivalent to one comma-joined header, and
+    Starlette's ``headers.get`` would only return the first of them.
+    """
+    entries: list[str] = []
+    for header_value in request.headers.getlist("x-forwarded-for"):
+        entries.extend(part.strip() for part in header_value.split(","))
+    return [entry for entry in entries if entry]
+
+
 def _client_key(request: Request) -> str:
+    """Rate-limit bucket for ``request``: the caller as the nearest hop saw it.
+
+    Behind the Next.js proxy ``request.client.host`` is always the proxy, so one
+    family would spend the whole per-IP budget for everyone. When the immediate
+    peer is a trusted proxy we therefore use the *rightmost* X-Forwarded-For
+    entry — the one that proxy appended, i.e. the address it observed — instead
+    of the leftmost, which is whatever the client itself claimed and is trivial
+    to spoof. From an untrusted peer the header is ignored outright.
+
+    Uvicorn's own ProxyHeadersMiddleware (on by default, trusting 127.0.0.1)
+    may already have rewritten ``request.client`` from the same header. The two
+    agree: when it fires, ``host`` is no longer loopback and is used directly;
+    when it does not — a proxy on another host, or ``--no-proxy-headers`` —
+    this function is what keeps the bucket per browser.
+    """
     client = request.client
-    return client.host if client and client.host else "unknown"
+    host = client.host if client and client.host else ""
+    if host and host.lower() in TRUSTED_PROXY_HOSTS:
+        entries = _forwarded_for_entries(request)
+        if entries:
+            return entries[-1]
+    return host or "unknown"
 
 
 # ---------------------------------------------------------------------------

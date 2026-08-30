@@ -4,8 +4,9 @@
   "idPlaceholder": "12.345.678-5 / 111222333-4",
   "idHelp": "Ingresa un RUN válido con su dígito verificador módulo 11, o un IPE de nueve dígitos con su dígito verificador numérico. Los puntos y el guion son opcionales.",
   "idHelpLong": "Se usa para calcular el percentil SHA-256 específico de cada establecimiento. Ingresa un RUN válido con su dígito verificador módulo 11, o un IPE de nueve dígitos con su dígito verificador numérico. Los puntos y el guion son opcionales.",
-  "idValid": "Formato válido.",
+  "idValid": "Formato de {kind} válido.",
   "idRequiredHint": "Ingresa el RUN/IPE del estudiante para habilitar el análisis.",
+  "privacyNote": "El cálculo se realiza en el servidor de esta aplicación. El RUN/IPE no se guarda en el navegador ni aparece en la dirección web, y la dirección del hogar solo se envía a OpenStreetMap cuando la familia lo pide explícitamente en el paso 4.",
   "why": {
     "title": "¿Por qué solicitamos este dato?",
     "body": "El identificador se usa para reproducir el cálculo MTB de desempate específico de cada establecimiento. No modifica ni envía la postulación oficial SAE del estudiante.",

@@ -1,6 +1,6 @@
 # Migration: Streamlit → Next.js + shadcn/ui
 
-Status: **in progress** — Phases 0–2 done; see §9. This document is the single source of truth
+Status: **in progress** — Phases 0–5 done; see §9. This document is the single source of truth
 for the migration. It is written so that each phase can be handed to an
 autonomous agent (Opus 5) as one well-scoped unit of work, with a verifiable
 gate before the next phase starts.
@@ -565,21 +565,21 @@ Operating rules:
 | 0 | 2026-08-30 | `wf_9a779ad6-209` | green — 59 pytest, `/simulate` reproduces goldens to 1e-12 over HTTP | 2 impl agents (no worktrees, disjoint files), 1 review round with 1 must-fix (all 4 priority tiers now frozen); fixtures generated for the first time — 18 scenarios. Error body still nested under `detail` → Phase 1. |
 | 1 | 2026-08-30 | `wf_5864c3a1-cc2` | green — 107 pytest, engine imports with Streamlit blocked, isolated venv from `requirements-api.txt` passes, `/simulate` & `/recommend` reproduce goldens over HTTP (delta 0.0) | 4 impl agents; review: 0 must-fix, 3 should-fix — fixed at the human gate: validation errors no longer echo the request body (RUN privacy), `MAX_WISHES` moved to `constants.py` and raised to 30 (documented in §3), openapi.json committed so the drift check is real. |
 | 2 | 2026-08-30 | `wf_906ffd8c-8c1` | green — `pnpm lint/test(144)/build/e2e(9)` | Next.js 16.3.3, React 19.2, Tailwind 4, shadcn CLI 4 (`radix-nova`), next-intl 4.14, zustand; Node 26 (Current, not LTS — accepted). Deviation: `/meta` is fetched in the `(wizard)` group layout, not the root layout (keeps non-wizard pages backend-free) — keep it there. Review should-fixes fixed at the gate: Playwright now starts uvicorn too, `reuseExistingServer: !CI`, Next telemetry disabled. Open → Phase 3: `error.tsx` under `(wizard)`, `TooltipProvider`, `max_wishes` client gate, X-Forwarded-For for the geocode limiter. |
-| 3 | – | – | – | |
-| 4 | – | – | – | |
-| 5 | – | – | – | |
+| 3 | 2026-08-30 | `wf_bebaf675-554` (run together with 4 and 5) | green — pytest 114, vitest 296, e2e 44 | Steps 1+2 complete: student step, filter panel (10 filters), server-searched combobox, wish cards with dnd + arrows, priorities, ties groups, imputed notice, order count + cap. Also closed the Phase 2 leftovers (`error.tsx`, `TooltipProvider`, h1 contract, `max_wishes` client gate, X-Forwarded-For for the geocode limiter). |
+| 4 | 2026-08-30 | `wf_bebaf675-554` | green — `e2e/result.spec.ts` renders the exact golden percentages for strict_04 and equiv_01/02/03 | `formatPercent`/`fixedHalfEven` verified against CPython on 117k values. Deviation: es uses a comma decimal ("54,8%") where the prototype printed "54.8%" in both languages — accepted; parity means identical digits, locale punctuation. Open → Phase 6: ties mode with no actual ties must render the equivalence block (verdict *stable*, reference + technical tables) like the prototype; cap/paginate the technical variants table (5,040-row lists are reachable). |
+| 5 | 2026-08-30 | `wf_bebaf675-554` | green — `e2e/improve.spec.ts` with intercepted `/api/geocode` | Address geocoding on click only, recommendation cards with risk badges, append → step 2. Open → Phase 6: the step-2 "N added" banner never fires (producer clears the flag; a toast stands in) — fix the step-guard race instead of the unmount workaround; render `errors.portfolioRiskFailed` when every chance is null; trim appended recommendations to `max_wishes`; bare integers (capacity, MTB rank) must not be thousands-grouped; XFF trust flag for deployments without a front proxy; delete dead `placeholder-step.tsx` / `student-step.tsx` shim / `WizardNav.pending` or wire it. |
 | 6 | – | – | – | |
 | 7 | – | – | – | |
 
 Parity checklist (filled in Phase 6):
 
-- [ ] strict fixtures render identical percentages (es, en)
-- [ ] equivalence fixtures: verdict text, order count, per-order cards
+- [x] strict fixtures render identical digits (es uses comma decimal) — `e2e/result.spec.ts`
+- [x] equivalence fixtures: verdict text, order count, per-order cards — `e2e/result.spec.ts`
 - [ ] over-cap equivalence list blocked with the same message
 - [ ] recommendation cards: badge colour boundaries identical
 - [ ] geocode precision warnings identical for address / street / city
-- [ ] mode toggle keeps the list, invalidates the result
-- [ ] RUN/IPE never appears in storage, URL, or server logs
+- [x] mode toggle keeps the list, invalidates the result — `e2e/list.spec.ts`
+- [x] RUN/IPE never appears in storage or URL — `e2e/student.spec.ts`; server logs: proxy never logs bodies (unit test)
 
 ---
 
@@ -593,3 +593,4 @@ Parity checklist (filled in Phase 6):
 | `next-intl` semantic keys vs. prototype's English-sentence keys → translations drift | Phase 2 conversion script keeps the English sentence as a comment/`_source` field per key until Phase 7 |
 | Equivalence mode with thousands of variants renders slowly in the browser | server already caps at 10,000; UI groups by outcome above 12 and paginates technical tables |
 | No Node on the dev machine | Phase 2 first step; document in README |
+| **Accepted deviations from the 0a52f56 baseline** (recorded so the Phase 6 side-by-side does not report them as bugs): (a) identifiers accept ASCII digits only — `sae_app/mtb_engine.py` regexes changed from `\\d` to `[0-9]` in Phase 3–5 so server and client agree (`٤٥٦-1` was accepted before, is rejected now; no golden fixture affected); (b) `MAX_WISHES = 30` cap (§3); (c) Spanish percentages use a comma decimal separator; (d) `/meta` is fetched in the `(wizard)` layout, not the root layout. | Listed in §9; the parity checklist reads "identical digits, locale punctuation". |

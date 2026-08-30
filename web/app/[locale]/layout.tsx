@@ -56,9 +56,10 @@ export default async function LocaleLayout({
         <NextIntlClientProvider>
           <header className="sticky top-0 z-10 border-b border-border bg-background">
             <div className="mx-auto flex w-full max-w-3xl items-center justify-between gap-4 px-4 py-3">
-              {/* Not an <h1>: each wizard step owns the page heading, and two
-                  level-1 headings would make the step title ambiguous to a
-                  screen reader. */}
+              {/* A brand element, not a heading: `components/wizard/
+                  step-page.tsx` renders the step title as the page's single
+                  <h1>, and a second level-1 heading repeated on every route
+                  would make that title ambiguous to a screen reader. */}
               <p className="text-sm leading-tight font-semibold tracking-tight sm:text-base">
                 <Link href="/" className="hover:underline">
                   {t("title")}
