@@ -1,6 +1,6 @@
 # Migration: Streamlit → Next.js + shadcn/ui
 
-Status: **in progress** — Phase 0 done; see §9. This document is the single source of truth
+Status: **in progress** — Phases 0–1 done; see §9. This document is the single source of truth
 for the migration. It is written so that each phase can be handed to an
 autonomous agent (Opus 5) as one well-scoped unit of work, with a verifiable
 gate before the next phase starts.
@@ -166,8 +166,8 @@ English source string or a stable snake_case key; the frontend shows
 | `GET /regions` | region names | exists; superseded by `/meta`, keep for compatibility |
 | `GET /programs` | **extended** — `region`, `q`, `limit`, `offset`, plus repeatable filter params `track`, `specialty_sector`, `gender`, `school_day`, `rurality`, `pie`, `pace`, `enrollment_fee`, `monthly_fee`, `religious_orientation` | filter semantics = `program_matches_filters`; response items gain `calibration_imputed: bool` and the detail fields shown in the prototype's program-details popover |
 | `GET /programs/{program_id}` | **new** — one program with all display fields | used by wish cards (so the store only holds `program_id`s) |
-| `POST /simulate` | **extended** | body unchanged (`student_id`, `wishes[]` with optional `equivalence_group` + 5 flags). Response adds: `attention_level: "low"|"moderate"|"high"`, `thresholds`, `outcomes[]` (sorted by probability, includes `Unmatched`), per-wish `lottery_number`, `priority_tier`, `lottery_population_used`, `calibration_imputed`; `equivalence_sensitivity` adds `verdict: "stable"|"stable_probability_shift"|"outcome_changes"`, `predicted_chance_min/max`, and per-variant `tied_order: [[program_id, …], …]` (structured replacement for `compact_tied_order_label`) |
-| `POST /recommend` | **new** — body: `student_id`, `wishes[]` (same shape as simulate), `max_recommendations` (2–10), optional `home: {lat, lon, precision}` | server re-runs the simulation internally to obtain the current unmatched risk (no client-supplied risk); response items carry **raw numbers** (`chance_if_considered`, `projected_unmatched_risk`, `distance_km`, `distance_reference: "home"|"list"`, `capacity`, `applicants_per_seat`, `estimated_mtb_rank`, `score`, `risk_level: "green"|"orange"|"red"|"gray"`) plus `similarity_fallback_mode`, `hard_distance_filter_applied`, `diagnostics.failed_candidates` |
+| `POST /simulate` | **extended** | body unchanged (`student_id`, `wishes[]` with optional `equivalence_group` + 5 flags; at most `MAX_WISHES` = 30 wishes, exposed as `/meta.max_wishes` — the prototype had no cap). Response adds: `attention_level: "low"|"moderate"|"high"`, `thresholds`, `outcomes[]` (sorted by probability, includes `Unmatched`), per-wish `lottery_number`, `priority_tier`, `lottery_population_used`, `calibration_imputed`; `equivalence_sensitivity` adds `verdict: "stable"|"stable_probability_shift"|"outcome_changes"`, `predicted_chance_min/max`, and per-variant `tied_order: [[program_id, …], …]` (structured replacement for `compact_tied_order_label`) |
+| `POST /recommend` | **new** — body: `student_id`, `wishes[]` (same shape as simulate), `max_recommendations` (2–10), optional `home: {lat, lon, precision}` | server re-runs the simulation internally to obtain the current unmatched risk (no client-supplied risk); response carries `distance_reference: "home"|"list"` at the top level; items carry **raw numbers** (`chance_if_considered`, `projected_unmatched_risk`, `distance_km`, `capacity`, `applicants_per_seat`, `estimated_mtb_rank`, `score`, `risk_level: "green"|"orange"|"red"|"gray"`) plus `similarity_fallback_mode`, `hard_distance_filter_applied`, `diagnostics.failed_candidates` |
 | `POST /geocode` | **new** — body: `address` | wraps `geocode_chilean_address`; response `{ok, lat, lon, precision, display_name, warning_key, error_key, params}`. Nominatim throttle (1 req/s per process) stays server-side; add a per-IP rate limit (e.g. 10/min) in front of it |
 
 Contract rules:
@@ -563,7 +563,7 @@ Operating rules:
 | Phase | Started | Run id | Gate result | Notes |
 | --- | --- | --- | --- | --- |
 | 0 | 2026-08-30 | `wf_9a779ad6-209` | green — 59 pytest, `/simulate` reproduces goldens to 1e-12 over HTTP | 2 impl agents (no worktrees, disjoint files), 1 review round with 1 must-fix (all 4 priority tiers now frozen); fixtures generated for the first time — 18 scenarios. Error body still nested under `detail` → Phase 1. |
-| 1 | – | – | – | |
+| 1 | 2026-08-30 | `wf_5864c3a1-cc2` | green — 107 pytest, engine imports with Streamlit blocked, isolated venv from `requirements-api.txt` passes, `/simulate` & `/recommend` reproduce goldens over HTTP (delta 0.0) | 4 impl agents; review: 0 must-fix, 3 should-fix — fixed at the human gate: validation errors no longer echo the request body (RUN privacy), `MAX_WISHES` moved to `constants.py` and raised to 30 (documented in §3), openapi.json committed so the drift check is real. |
 | 2 | – | – | – | |
 | 3 | – | – | – | |
 | 4 | – | – | – | |

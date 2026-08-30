@@ -1,0 +1,14 @@
+# Runtime dependencies of the FastAPI service (MIGRATION.md Phase 1).
+#
+#   python -m venv .venv-api && .venv-api/bin/python -m pip install -r requirements-api.txt
+#   .venv-api/bin/python -c "import sae_app.data_loading, sae_app.geo, sae_app.recommendations, sae_app.i18n, sae_app.wish_list"
+#
+# Deliberately WITHOUT streamlit: the exit gate for Phase 1 is that the engine
+# imports in an environment where Streamlit is not installed at all. Lower
+# bounds only, matching requirements.txt exactly for the shared packages.
+# Phase 7 merges this file back into requirements.txt once app.py is gone.
+pandas>=2.0
+numpy>=1.24
+scipy>=1.10
+fastapi>=0.110
+uvicorn[standard]>=0.27

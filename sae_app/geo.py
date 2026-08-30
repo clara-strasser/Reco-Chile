@@ -17,8 +17,8 @@ import urllib.request
 
 import numpy as np
 import pandas as pd
-import streamlit as st
 
+from sae_app.cache import memoize_bytes, ttl_memoize
 from sae_app.constants import (
     CHILE_COORDINATE_ZONES,
     COMMUNE_COORDINATES_PATH,
@@ -35,7 +35,7 @@ from sae_app.program_options import ProgramRecord
 from sae_app.text_utils import normalize_geo_key, parse_coordinate
 
 
-@st.cache_data(show_spinner=False)
+@memoize_bytes
 def _load_commune_coordinates(file_bytes: bytes) -> pd.DataFrame:
     """Parse optional commune coordinates using one coherent coordinate pair."""
     if not file_bytes.strip():
@@ -112,7 +112,7 @@ def commune_coordinate_lookup() -> dict[tuple[str, str], tuple[float, float]]:
     return _commune_coordinate_lookup(file_bytes)
 
 
-@st.cache_data(show_spinner=False)
+@memoize_bytes
 def _commune_coordinate_lookup(
     file_bytes: bytes,
 ) -> dict[tuple[str, str], tuple[float, float]]:
@@ -267,6 +267,12 @@ def normalize_address_for_geocoding(address: str) -> str:
 
 
 GEOCODING_RESULT_LIMIT = 10
+
+# Geocoding cache policy, previously expressed as ``@st.cache_data(ttl=24h)``.
+# One day of reuse keeps repeated wizard steps from re-querying Nominatim,
+# and the bound keeps a long-lived API process from growing without limit.
+GEOCODING_CACHE_TTL_SECONDS = 24 * 60 * 60
+GEOCODING_CACHE_MAXSIZE = 512
 
 ADDRESS_LEVEL_ADDRESSTYPES = {
     "house",
@@ -653,8 +659,8 @@ def _geocoding_error(address: str, error_key: str, **error_kwargs) -> dict:
     """Return a cache-safe, language-neutral geocoding error payload.
 
     Translation belongs to the UI layer. Keeping only the translation key and
-    formatting arguments in the cached result prevents one session's language
-    from leaking into another session through Streamlit's shared data cache.
+    formatting arguments in the cached result prevents one caller's language
+    from leaking into another through the process-wide geocoding cache.
     """
     return {
         "ok": False,
@@ -664,12 +670,22 @@ def _geocoding_error(address: str, error_key: str, **error_kwargs) -> dict:
     }
 
 
-@st.cache_data(show_spinner=False, ttl=24 * 60 * 60)
+def _geocode_cache_key(address: str) -> str:
+    """Key geocoding results by the whitespace-collapsed address string."""
+    return " ".join(str(address or "").strip().split())
+
+
+@ttl_memoize(
+    ttl_seconds=GEOCODING_CACHE_TTL_SECONDS,
+    maxsize=GEOCODING_CACHE_MAXSIZE,
+    key=_geocode_cache_key,
+)
 def geocode_chilean_address(address: str) -> dict:
     """Geocode a family-entered address using OpenStreetMap/Nominatim.
 
-    The app does not store the address permanently; Streamlit only keeps the
-    returned coordinates in session/cache to avoid repeated calls on reruns.
+    The app does not store the address permanently; only the returned
+    coordinates are kept, in a 24-hour in-process cache, so that repeating a
+    step does not re-query Nominatim.
 
     This version asks Nominatim for several candidates and selects the best one
     with a conservative precision score. It avoids treating a street-level match

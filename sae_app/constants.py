@@ -34,6 +34,11 @@ PRIORITY_STUDENT_SEATS = "priority_student_seats"
 HARD_UNMATCHED_THRESHOLD = 0.027   # 2.7%: strong unmatched-risk alert
 SOFT_UNMATCHED_THRESHOLD = 0.004   # 0.4%: lighter podium warning
 MAX_EXACT_EQUIV_PERMUTATIONS = 10000
+# Upper bound on wishes accepted per request by the API and enforced by the
+# web wizard (exposed via GET /meta as max_wishes). The Streamlit prototype had
+# no cap; this is a deliberate guard against pathological payloads, chosen well
+# above any realistic SAE list length.
+MAX_WISHES = 30
 # If compatible strict orders keep the same predicted school but change its
 # final chance by at least 0.5 percentage point, show an intermediate warning.
 EQUIV_PROBABILITY_CHANGE_WARNING_THRESHOLD = 0.005

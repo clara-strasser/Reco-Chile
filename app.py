@@ -45,7 +45,7 @@ from sae_app.data_loading import (
     validate_cumulative_share_columns,
 )
 from sae_app.errors import MtbEngineError
-from sae_app.i18n import format_option_label, initialize_language_selector, t
+from sae_app.i18n import format_option_label, t
 from sae_app.mtb_engine import (
     attach_mtb_hashes,
     compute,
@@ -56,13 +56,12 @@ from sae_app.program_options import build_program_mapping, compact_program_label
 from sae_app.recommendations import clear_candidate_risk_cache
 from sae_app.session_state import invalidate_simulation_state
 from sae_app.text_utils import as_bool
+from sae_app.ui_common import compact_order_label, compact_tied_order_label, initialize_language_selector
 from sae_app.ui_recommendations import render_similar_program_recommendations
 from sae_app.ui_simulation import render_simulation_result
 from sae_app.ui_wish_builder import render_wish_list_builder
 from sae_app.wish_list import (
     clean_wish_rows,
-    compact_order_label,
-    compact_tied_order_label,
     count_equivalence_orders,
     empty_wishes,
     iter_equivalence_orders,

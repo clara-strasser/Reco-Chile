@@ -39,6 +39,7 @@ from sae_app.recommendations import (
     RECOMMENDATION_RISK_OPTIMIZATION_WEIGHT,
     RECOMMENDATION_MIN_SIMILARITY_SCORE,
     RECOMMENDATION_MAX_HOME_DISTANCE_KM,
+    SCHOOL_NAME_UNAVAILABLE,
     current_unmatched_risk_from_simulation_result,
     recommend_similar_programs,
 )
@@ -356,6 +357,10 @@ def render_similar_program_recommendations(
             program_label = str(recommendation.get(PROGRAM, "")).strip()
             row_key = hashlib.md5(program_label.encode("utf-8")).hexdigest()[:10]
             school = str(recommendation.get("School", "")).strip()
+            # The engine returns an untranslated code when the school name is
+            # missing; translating it is the presentation layer's job.
+            if school == SCHOOL_NAME_UNAVAILABLE:
+                school = t(SCHOOL_NAME_UNAVAILABLE)
             commune = str(recommendation.get("Commune", "")).strip()
             region = str(recommendation.get("Region", "")).strip()
             program_details = str(recommendation.get("Program details", "")).strip()

@@ -1,0 +1,961 @@
+"""API contract v1 tests (MIGRATION.md §3 and §6.3).
+
+Every number the HTTP layer returns is compared against the committed golden
+fixtures — the same files ``test_engine_golden.py`` replays through the engine
+directly. If these two suites disagree, the adapter, not the engine, is wrong.
+
+Nothing here touches the network: ``/geocode`` is exercised with a
+monkeypatched ``api.geocode_chilean_address``, and the recommendation fixtures
+carry a fixed home coordinate that was never geocoded.
+"""
+
+from __future__ import annotations
+
+import json
+import sys
+from pathlib import Path
+
+TESTS_DIR = Path(__file__).resolve().parent
+REPO_ROOT = TESTS_DIR.parent
+for _path in (str(REPO_ROOT), str(TESTS_DIR)):
+    if _path not in sys.path:
+        sys.path.insert(0, _path)
+
+import pytest  # noqa: E402
+from fastapi.testclient import TestClient  # noqa: E402
+
+import api  # noqa: E402
+from sae_app.constants import (  # noqa: E402
+    MAX_WISHES,
+    MAX_EXACT_EQUIV_PERMUTATIONS,
+    PIE_FILTER_OPTIONS,
+)
+
+from golden_runner import GOLDEN_DIR  # noqa: E402
+
+FLOAT_TOLERANCE = 1e-12
+
+FIXTURE_PATHS = sorted(
+    path for path in GOLDEN_DIR.glob("*.json") if not path.name.startswith("_")
+)
+
+
+def _fixtures(kind: str) -> list[dict]:
+    out = []
+    for path in FIXTURE_PATHS:
+        fixture = json.loads(path.read_text(encoding="utf-8"))
+        if fixture.get("kind") == kind:
+            out.append(fixture)
+    return out
+
+
+STRICT_FIXTURES = _fixtures("strict")
+EQUIVALENCE_FIXTURES = _fixtures("equivalence")
+RECOMMENDATION_FIXTURES = _fixtures("recommendation")
+
+
+def _ids(fixtures: list[dict]) -> list[str]:
+    return [fixture["name"] for fixture in fixtures]
+
+
+@pytest.fixture(scope="module")
+def client():
+    """A TestClient entered as a context manager, so ``lifespan`` really runs.
+
+    Without the ``with`` block FastAPI never populates ``api.STATE`` and every
+    endpoint would fail on a KeyError instead of on its own logic.
+    """
+    with TestClient(api.app) as test_client:
+        yield test_client
+
+
+@pytest.fixture(autouse=True)
+def _reset_geocode_rate_limiter():
+    """Each test starts with the full per-IP geocoding budget."""
+    api._GEOCODE_RATE_LIMITER.reset()
+    yield
+    api._GEOCODE_RATE_LIMITER.reset()
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def _wire_wishes(fixture: dict, *, explicit_groups: bool) -> list[dict]:
+    """Fixture wishes as the request body of /simulate and /recommend.
+
+    ``explicit_groups`` distinguishes the two modes the contract collapses into
+    one pipeline: a strict list omits ``equivalence_group`` entirely, a tied
+    list sends the fixture's ``preference_group``.
+    """
+    wishes = []
+    for wish in fixture["inputs"]["wishes"]:
+        item = {
+            "program_id": wish["program_id"],
+            "priority_sibling": wish["priority_sibling"],
+            "priority_student": wish["priority_student"],
+            "priority_parent_civil_servant": wish["priority_parent_civil_servant"],
+            "priority_ex_student": wish["priority_ex_student"],
+            "priority_already_registered": wish["priority_already_registered"],
+        }
+        if explicit_groups:
+            item["equivalence_group"] = wish["preference_group"]
+        wishes.append(item)
+    return wishes
+
+
+def _assert_close(actual, expected, label: str) -> None:
+    if expected is None:
+        assert actual is None, f"{label}: expected null, got {actual!r}"
+        return
+    assert actual is not None, f"{label}: expected {expected!r}, got null"
+    assert abs(float(actual) - float(expected)) <= FLOAT_TOLERANCE, (
+        f"{label}: {actual!r} != {expected!r}"
+    )
+
+
+def _assert_choices_match(wishes: list[dict], expected_choices: list[dict]) -> None:
+    """Per-wish probabilities and identity, in order."""
+    assert len(wishes) == len(expected_choices)
+    for wish, expected in zip(wishes, expected_choices):
+        label = f"wish {expected['wish_rank']} ({expected['program_id']})"
+        assert wish["program_id"] == expected["program_id"], label
+        assert wish["program_label"] == expected["program"], label
+        assert wish["wish_rank"] == expected["wish_rank"], label
+        assert wish["priority_tier"] == expected["priority_tier"], label
+        assert wish["lottery_number"] == expected["lottery_number"], label
+        assert wish["lottery_population_used"] == expected["lottery_population_used"], label
+        assert wish["capacity"] == expected["capacity"], label
+        assert (
+            wish["true_applicants_last_year"] == expected["true_applicants_last_year"]
+        ), label
+        assert wish["calibration_imputed"] == expected["calibration_2024_imputed"], label
+        _assert_close(
+            wish["availability_probability"],
+            expected["availability_probability"],
+            f"{label}.availability_probability",
+        )
+        _assert_close(
+            wish["cumulative_unavailable_before_choice"],
+            expected["cumulative_unavailable_before_choice"],
+            f"{label}.cumulative_unavailable_before_choice",
+        )
+        _assert_close(
+            wish["choice_assignment_probability"],
+            expected["choice_assignment_probability"],
+            f"{label}.choice_assignment_probability",
+        )
+
+
+def _assert_outcomes_consistent(payload: dict, expected_choices: list[dict]) -> None:
+    """Outcomes mirror ordered_estimated_outcomes: positive programs + Unmatched."""
+    outcomes = payload["outcomes"]
+    unmatched = [item for item in outcomes if item["program_id"] is None]
+    assert len(unmatched) == 1
+    assert unmatched[0]["label"] == "Unmatched"
+    _assert_close(
+        unmatched[0]["probability"],
+        payload["unmatched_risk"],
+        "outcomes.Unmatched.probability",
+    )
+
+    expected_positive = {
+        choice["program_id"]: choice["choice_assignment_probability"]
+        for choice in expected_choices
+        if choice["choice_assignment_probability"] > 0
+    }
+    actual_positive = {
+        item["program_id"]: item["probability"]
+        for item in outcomes
+        if item["program_id"] is not None
+    }
+    assert set(actual_positive) == set(expected_positive)
+    for program_id, probability in expected_positive.items():
+        _assert_close(actual_positive[program_id], probability, f"outcomes[{program_id}]")
+
+    probabilities = [item["probability"] for item in outcomes]
+    assert probabilities == sorted(probabilities, reverse=True)
+
+
+def _attention_level_for(unmatched_risk: float, thresholds: dict) -> str:
+    if unmatched_risk >= thresholds["hard"]:
+        return "high"
+    if thresholds["soft"] <= unmatched_risk < thresholds["hard"]:
+        return "moderate"
+    return "low"
+
+
+# ---------------------------------------------------------------------------
+# /health, /meta, /regions
+# ---------------------------------------------------------------------------
+
+def test_health(client):
+    assert client.get("/health").json() == {"status": "ok"}
+
+
+def test_meta_shape(client):
+    meta = client.get("/meta").json()
+
+    assert meta["api_version"] == api.API_VERSION
+    assert meta["hard_unmatched_threshold"] == pytest.approx(0.027)
+    assert meta["soft_unmatched_threshold"] == pytest.approx(0.004)
+    assert meta["equiv_probability_change_warning_threshold"] == pytest.approx(0.005)
+    assert meta["max_exact_equiv_permutations"] == MAX_EXACT_EQUIV_PERMUTATIONS
+    assert meta["recommendation_max_home_distance_km"] == pytest.approx(100.0)
+    assert meta["max_wishes"] == MAX_WISHES
+
+    assert meta["regions"] == client.get("/regions").json()
+    assert meta["regions"], "at least one region must be exposed"
+
+    # A stable short digest, so the frontend can tell a data refresh happened.
+    assert len(meta["data_fingerprint"]) == 16
+    assert set(meta["data_fingerprint"]) <= set("0123456789abcdef")
+    assert meta["data_fingerprint"] == client.get("/meta").json()["data_fingerprint"]
+
+    filter_options = meta["filter_options"]
+    assert set(filter_options) == {
+        "tracks",
+        "specialty_sectors",
+        "genders",
+        "school_days",
+        "rurality",
+        "pie",
+        "pace",
+        "enrollment_fee",
+        "monthly_fee",
+        "religious_orientation",
+    }
+    assert filter_options["tracks"] == ["General", "Specialized"]
+    assert filter_options["pie"] == PIE_FILTER_OPTIONS
+    assert filter_options["enrollment_fee"] == filter_options["monthly_fee"]
+    for key, values in filter_options.items():
+        assert values, f"filter option list {key} must not be empty"
+
+
+# ---------------------------------------------------------------------------
+# /programs
+# ---------------------------------------------------------------------------
+
+def test_programs_default_page(client):
+    payload = client.get("/programs", params={"limit": 5}).json()
+
+    assert len(payload["items"]) == 5
+    assert payload["offset"] == 0
+    assert payload["limit"] == 5
+    assert payload["total_matched"] > 5
+    assert payload["truncated"] is True
+
+    item = payload["items"][0]
+    assert set(item) == {
+        "program_id",
+        "program_label",
+        "school_name",
+        "school_commune",
+        "region",
+        "program_display_name",
+        "program_track",
+        "program_specialty_sector",
+        "program_gender",
+        "program_school_day",
+        "program_rurality",
+        "program_pie",
+        "program_pace",
+        "program_enrollment_fee",
+        "program_monthly_fee",
+        "program_religious_orientation",
+        "capacity",
+        "true_applicants_last_year",
+        "calibration_imputed",
+    }
+    assert isinstance(item["calibration_imputed"], bool)
+
+
+def test_programs_filter_by_pie(client):
+    payload = client.get(
+        "/programs", params={"pie": "With PIE", "limit": 1000}
+    ).json()
+
+    assert payload["total_matched"] > 0
+    assert payload["total_matched"] < client.get("/programs").json()["total_matched"] + 1
+    assert {item["program_pie"] for item in payload["items"]} == {"With PIE"}
+
+    # The two PIE values partition the catalogue.
+    without = client.get("/programs", params={"pie": "Without PIE", "limit": 1}).json()
+    everything = client.get("/programs", params={"limit": 1}).json()
+    assert payload["total_matched"] + without["total_matched"] == everything["total_matched"]
+
+
+def test_programs_repeatable_filters_are_a_union(client):
+    boys = client.get("/programs", params={"gender": "Boys", "limit": 1}).json()
+    girls = client.get("/programs", params={"gender": "Girls", "limit": 1}).json()
+    both = client.get(
+        "/programs", params=[("gender", "Boys"), ("gender", "Girls"), ("limit", 1)]
+    ).json()
+
+    assert both["total_matched"] == boys["total_matched"] + girls["total_matched"]
+
+
+def test_programs_region_and_query_filters(client):
+    region = client.get("/regions").json()[0]
+    payload = client.get("/programs", params={"region": region, "limit": 1000}).json()
+
+    assert payload["total_matched"] > 0
+    assert {item["region"] for item in payload["items"]} == {region}
+
+    needle = payload["items"][0]["school_commune"].lower()
+    searched = client.get(
+        "/programs", params={"region": region, "q": needle, "limit": 1000}
+    ).json()
+    assert searched["total_matched"] > 0
+    assert searched["total_matched"] <= payload["total_matched"]
+
+
+def test_programs_offset_pagination_is_consistent(client):
+    everything = client.get("/programs", params={"limit": 1000, "offset": 0}).json()
+    total = everything["total_matched"]
+
+    first = client.get("/programs", params={"limit": 10, "offset": 0}).json()
+    second = client.get("/programs", params={"limit": 10, "offset": 10}).json()
+
+    assert first["total_matched"] == second["total_matched"] == total
+    assert first["offset"] == 0 and second["offset"] == 10
+    assert [item["program_id"] for item in first["items"]] == [
+        item["program_id"] for item in everything["items"][:10]
+    ]
+    assert [item["program_id"] for item in second["items"]] == [
+        item["program_id"] for item in everything["items"][10:20]
+    ]
+
+    # Ordering is the mapping order, so pages never overlap or skip a program.
+    assert not set(item["program_id"] for item in first["items"]) & set(
+        item["program_id"] for item in second["items"]
+    )
+
+    last = client.get("/programs", params={"limit": 10, "offset": total - 3}).json()
+    assert len(last["items"]) == 3
+    assert last["truncated"] is False
+
+    beyond = client.get("/programs", params={"limit": 10, "offset": total}).json()
+    assert beyond["items"] == []
+    assert beyond["total_matched"] == total
+    assert beyond["truncated"] is False
+
+
+def test_programs_negative_offset_is_rejected(client):
+    response = client.get("/programs", params={"offset": -1})
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error_key"] == "validation_error"
+    assert "errors" in body["params"]
+
+
+def test_program_detail_and_404(client):
+    listed = client.get("/programs", params={"limit": 1}).json()["items"][0]
+
+    detail = client.get(f"/programs/{listed['program_id']}")
+    assert detail.status_code == 200
+    assert detail.json() == listed
+
+    missing = client.get("/programs/0:0")
+    assert missing.status_code == 404
+    body = missing.json()
+    assert set(body) == {"error_key", "message", "params"}
+    assert body["error_key"] == "unknown_program_id"
+    assert body["params"] == {"program_id": "0:0"}
+
+
+# ---------------------------------------------------------------------------
+# Error envelope
+# ---------------------------------------------------------------------------
+
+def test_error_envelope_is_bare_and_localized(client):
+    """4xx bodies are the envelope itself, never nested under `detail`."""
+    program_id = client.get("/programs", params={"limit": 1}).json()["items"][0][
+        "program_id"
+    ]
+    body = {"student_id": "12345678-9", "wishes": [{"program_id": program_id}]}
+
+    spanish = client.post("/simulate", params={"lang": "es"}, json=body)
+    english = client.post("/simulate", params={"lang": "en"}, json=body)
+
+    assert spanish.status_code == english.status_code == 422
+    for response in (spanish, english):
+        payload = response.json()
+        assert set(payload) == {"error_key", "message", "params"}
+        assert "detail" not in payload
+        assert payload["error_key"] == "The RUN check digit is invalid."
+
+    assert english.json()["message"] == "The RUN check digit is invalid."
+    assert spanish.json()["message"] == "El dígito verificador del RUN es inválido."
+    assert spanish.json()["message"] != english.json()["message"]
+
+
+def test_language_falls_back_to_spanish(client):
+    program_id = client.get("/programs", params={"limit": 1}).json()["items"][0][
+        "program_id"
+    ]
+    body = {"student_id": "12345678-9", "wishes": [{"program_id": program_id}]}
+    spanish_message = "El dígito verificador del RUN es inválido."
+
+    assert client.post("/simulate", json=body).json()["message"] == spanish_message
+    assert (
+        client.post("/simulate", params={"lang": "de"}, json=body).json()["message"]
+        == spanish_message
+    )
+    assert (
+        client.post(
+            "/simulate", json=body, headers={"Accept-Language": "de,en;q=0.8"}
+        ).json()["message"]
+        == "The RUN check digit is invalid."
+    )
+    # An explicit ?lang wins over the header.
+    assert (
+        client.post(
+            "/simulate",
+            params={"lang": "es"},
+            json=body,
+            headers={"Accept-Language": "en"},
+        ).json()["message"]
+        == spanish_message
+    )
+
+
+def test_unknown_and_duplicate_program_ids(client):
+    program_id = client.get("/programs", params={"limit": 1}).json()["items"][0][
+        "program_id"
+    ]
+
+    unknown = client.post(
+        "/simulate",
+        json={"student_id": "12345678-5", "wishes": [{"program_id": "0:0"}]},
+    )
+    assert unknown.status_code == 422
+    assert unknown.json()["error_key"] == "unknown_program_id"
+    assert unknown.json()["params"] == {"program_id": "0:0"}
+
+    duplicate = client.post(
+        "/simulate",
+        json={
+            "student_id": "12345678-5",
+            "wishes": [{"program_id": program_id}, {"program_id": program_id}],
+        },
+    )
+    assert duplicate.status_code == 422
+    assert duplicate.json()["error_key"] == "duplicate_program_id"
+    assert duplicate.json()["params"] == {"program_id": program_id}
+
+
+def test_empty_wish_list_is_a_validation_error(client):
+    response = client.post("/simulate", json={"student_id": "12345678-5", "wishes": []})
+    assert response.status_code == 422
+    assert response.json()["error_key"] == "validation_error"
+
+
+# ---------------------------------------------------------------------------
+# /simulate — strict fixtures
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("fixture", STRICT_FIXTURES, ids=_ids(STRICT_FIXTURES))
+def test_simulate_reproduces_strict_fixture(client, fixture):
+    expected = fixture["expected"]
+
+    response = client.post(
+        "/simulate",
+        json={
+            "student_id": fixture["inputs"]["student_id"],
+            "wishes": _wire_wishes(fixture, explicit_groups=False),
+        },
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+
+    _assert_close(payload["unmatched_risk"], expected["unmatched_risk"], "unmatched_risk")
+    assert payload["at_risk"] == expected["flagged_at_risk"]
+    assert payload["predicted_outcome"] == expected["predicted_outcome"]
+    assert (
+        payload["predicted_outcome_program_id"]
+        == expected["predicted_outcome_program_id"]
+    )
+    assert payload["thresholds"]["hard"] == pytest.approx(expected["hard_threshold"])
+    assert payload["thresholds"]["soft"] == pytest.approx(expected["soft_threshold"])
+    assert payload["attention_level"] == _attention_level_for(
+        expected["unmatched_risk"], payload["thresholds"]
+    )
+
+    _assert_choices_match(payload["wishes"], expected["choices"])
+    _assert_outcomes_consistent(payload, expected["choices"])
+
+    # A strict list has exactly one compatible order, so there is nothing to
+    # be sensitive to.
+    assert payload["equivalence_sensitivity"] is None
+
+
+# The three-level alert is a presentation boundary the frontend copies from
+# /meta, so the boundaries themselves are pinned to literal levels here rather
+# than recomputed from the thresholds the response just returned.
+EXPECTED_ATTENTION_LEVELS = {
+    "strict_01_single_wish": "high",
+    "strict_02_three_wishes": "low",
+    "strict_03_four_wishes_priority_tiers": "low",
+    "strict_04_eight_wishes_scarce": "high",
+    "strict_05_twelve_wishes_already_registered": "low",
+    "strict_06_imputed_and_zero_capacity": "low",
+    "equiv_01_two_tied_stable_outcome": "moderate",
+    "equiv_02_two_groups_of_three": "low",
+    "equiv_03_group_of_four_probability_shift": "low",
+}
+
+
+@pytest.mark.parametrize(
+    ("fixture_name", "expected_level"), sorted(EXPECTED_ATTENTION_LEVELS.items())
+)
+def test_attention_levels_are_pinned(client, fixture_name, expected_level):
+    fixture = next(
+        item
+        for item in STRICT_FIXTURES + EQUIVALENCE_FIXTURES
+        if item["name"] == fixture_name
+    )
+    payload = client.post(
+        "/simulate",
+        json={
+            "student_id": fixture["inputs"]["student_id"],
+            "wishes": _wire_wishes(
+                fixture, explicit_groups=fixture["kind"] == "equivalence"
+            ),
+        },
+    ).json()
+
+    assert payload["attention_level"] == expected_level
+
+
+# ---------------------------------------------------------------------------
+# /simulate — equivalence fixtures
+# ---------------------------------------------------------------------------
+
+ACCEPTED_EQUIVALENCE_FIXTURES = [
+    fixture for fixture in EQUIVALENCE_FIXTURES if not fixture["expected"]["rejected_over_cap"]
+]
+REJECTED_EQUIVALENCE_FIXTURES = [
+    fixture for fixture in EQUIVALENCE_FIXTURES if fixture["expected"]["rejected_over_cap"]
+]
+
+
+@pytest.mark.parametrize(
+    "fixture",
+    ACCEPTED_EQUIVALENCE_FIXTURES,
+    ids=_ids(ACCEPTED_EQUIVALENCE_FIXTURES),
+)
+def test_simulate_reproduces_equivalence_fixture(client, fixture):
+    expected = fixture["expected"]
+
+    response = client.post(
+        "/simulate",
+        json={
+            "student_id": fixture["inputs"]["student_id"],
+            "wishes": _wire_wishes(fixture, explicit_groups=True),
+        },
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+
+    assert payload["thresholds"]["hard"] == pytest.approx(0.027)
+    assert payload["thresholds"]["soft"] == pytest.approx(0.004)
+    assert payload["attention_level"] == _attention_level_for(
+        expected["variants"][0]["unmatched_risk"], payload["thresholds"]
+    )
+
+    _assert_choices_match(payload["wishes"], expected["reference_choices"])
+    _assert_outcomes_consistent(payload, expected["reference_choices"])
+
+    sensitivity = payload["equivalence_sensitivity"]
+    assert sensitivity is not None
+    assert sensitivity["total_orders"] == expected["total_orders"]
+    assert len(sensitivity["variants"]) == expected["total_orders"]
+    assert sensitivity["distinct_outcome_count"] == len(expected["distinct_outcomes"])
+    assert sensitivity["outcome_stable"] == (len(expected["distinct_outcomes"]) == 1)
+
+    expected_variants = expected["variants"]
+    for variant, expected_variant in zip(sensitivity["variants"], expected_variants):
+        label = f"variant {expected_variant['strict_order_number']}"
+        assert variant["order_index"] == expected_variant["strict_order_number"], label
+        assert variant["program_order"] == expected_variant["order_program_ids"], label
+        assert variant["predicted_outcome"] == expected_variant["predicted_outcome"], label
+        assert (
+            variant["predicted_outcome_program_id"]
+            == expected_variant["predicted_outcome_program_id"]
+        ), label
+        assert variant["at_risk"] == expected_variant["flagged_at_risk"], label
+        _assert_close(
+            variant["unmatched_risk"],
+            expected_variant["unmatched_risk"],
+            f"{label}.unmatched_risk",
+        )
+        _assert_close(
+            variant["predicted_outcome_final_chance"],
+            expected_variant["predicted_outcome_final_chance"],
+            f"{label}.predicted_outcome_final_chance",
+        )
+
+    chances = [
+        variant["predicted_outcome_final_chance"]
+        for variant in expected_variants
+        if variant["predicted_outcome_final_chance"] is not None
+    ]
+    _assert_close(sensitivity["predicted_chance_min"], min(chances), "predicted_chance_min")
+    _assert_close(sensitivity["predicted_chance_max"], max(chances), "predicted_chance_max")
+
+    # The reference order is the first variant, exactly as in app.py.
+    first = expected_variants[0]
+    _assert_close(payload["unmatched_risk"], first["unmatched_risk"], "unmatched_risk")
+    assert payload["predicted_outcome"] == first["predicted_outcome"]
+    assert payload["at_risk"] == first["flagged_at_risk"]
+
+
+def test_tied_order_reports_only_genuinely_tied_groups(client):
+    """`tied_order` is the structured compact_tied_order_label: ties only."""
+    fixture = next(
+        item for item in ACCEPTED_EQUIVALENCE_FIXTURES
+        if item["name"] == "equiv_01_two_tied_stable_outcome"
+    )
+    payload = client.post(
+        "/simulate",
+        json={
+            "student_id": fixture["inputs"]["student_id"],
+            "wishes": _wire_wishes(fixture, explicit_groups=True),
+        },
+    ).json()
+
+    tied_ids = {
+        wish["program_id"]
+        for wish in fixture["inputs"]["wishes"]
+        if wish["preference_group"] == 1
+    }
+    assert len(tied_ids) == 2
+
+    seen_orders = set()
+    for variant in payload["equivalence_sensitivity"]["variants"]:
+        # The lone fixed program forms a singleton group and is omitted.
+        assert len(variant["tied_order"]) == 1
+        group = variant["tied_order"][0]
+        assert set(group) == tied_ids
+        assert group == variant["program_order"][: len(group)]
+        seen_orders.add(tuple(group))
+
+    assert len(seen_orders) == 2, "both internal orders of the tied group appear"
+
+
+@pytest.mark.parametrize(
+    ("fixture_name", "expected_verdict"),
+    [
+        ("equiv_01_two_tied_stable_outcome", "stable"),
+        ("equiv_02_two_groups_of_three", "outcome_changes"),
+        ("equiv_03_group_of_four_probability_shift", "stable_probability_shift"),
+    ],
+)
+def test_equivalence_verdicts(client, fixture_name, expected_verdict):
+    fixture = next(item for item in EQUIVALENCE_FIXTURES if item["name"] == fixture_name)
+    payload = client.post(
+        "/simulate",
+        json={
+            "student_id": fixture["inputs"]["student_id"],
+            "wishes": _wire_wishes(fixture, explicit_groups=True),
+        },
+    ).json()
+
+    assert payload["equivalence_sensitivity"]["verdict"] == expected_verdict
+
+
+@pytest.mark.parametrize(
+    "fixture",
+    REJECTED_EQUIVALENCE_FIXTURES,
+    ids=_ids(REJECTED_EQUIVALENCE_FIXTURES),
+)
+def test_simulate_rejects_over_cap_equivalence_list(client, fixture):
+    response = client.post(
+        "/simulate",
+        json={
+            "student_id": fixture["inputs"]["student_id"],
+            "wishes": _wire_wishes(fixture, explicit_groups=True),
+        },
+    )
+    assert response.status_code == 422
+    body = response.json()
+    assert body["error_key"] == "too_many_equivalence_orders"
+    assert body["params"]["n"] == fixture["expected"]["total_orders"] == 40320
+    assert body["params"]["limit"] == MAX_EXACT_EQUIV_PERMUTATIONS
+    assert str(MAX_EXACT_EQUIV_PERMUTATIONS) not in body["message"]  # thousands separator
+    assert "40,320" in body["message"]
+
+
+# ---------------------------------------------------------------------------
+# /recommend
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "fixture", RECOMMENDATION_FIXTURES, ids=_ids(RECOMMENDATION_FIXTURES)
+)
+def test_recommend_reproduces_fixture(client, fixture):
+    inputs = fixture["inputs"]
+    expected = fixture["expected"]
+
+    body = {
+        "student_id": inputs["student_id"],
+        "wishes": _wire_wishes(fixture, explicit_groups=False),
+        "max_recommendations": inputs["max_recommendations"],
+    }
+    home = inputs["home_geo_reference"]
+    if home:
+        body["home"] = {
+            "lat": home["lat"],
+            "lon": home["lon"],
+            "precision": home["precision"],
+        }
+
+    response = client.post("/recommend", json=body)
+    assert response.status_code == 200, response.text
+    payload = response.json()
+
+    _assert_close(
+        payload["current_unmatched_risk"],
+        expected["current_unmatched_risk"],
+        "current_unmatched_risk",
+    )
+    assert payload["distance_reference"] == ("home" if home else "list")
+    assert (
+        payload["hard_distance_filter_applied"]
+        == expected["home_supports_hard_distance_filter"]
+    )
+    assert len(payload["items"]) == expected["recommendation_count"]
+    assert payload["diagnostics"]["failed_candidates"] == (
+        expected["diagnostics"]["failed_candidates"]
+    )
+    assert payload["diagnostics"]["failed_candidate_examples"] == [
+        list(example)
+        for example in expected["diagnostics"]["failed_candidate_examples"]
+    ]
+
+    expected_rows = expected["recommendations"]
+    assert [item["program_id"] for item in payload["items"]] == [
+        row["program_id"] for row in expected_rows
+    ]
+
+    distance_column = (
+        "Straight-line distance from home (km)"
+        if home
+        else "Straight-line distance from current list (km)"
+    )
+    fallback_expected = False
+    for item, row in zip(payload["items"], expected_rows):
+        label = f"{row['program_id']}"
+        assert item["program_label"] == row["program_label"], label
+        assert item["school_name"] == row["School"], label
+        assert item["school_commune"] == row["Commune"], label
+        assert item["region"] == row["Region"], label
+        assert item["program_display_name"] == row["Program details"], label
+        assert item["risk_level"] == row["_risk_color"], label
+        # Raw engine numbers, never the formatted display strings.
+        _assert_close(
+            item["chance_if_considered"],
+            row["_chance_if_considered_raw"],
+            f"{label}.chance_if_considered",
+        )
+        _assert_close(
+            item["projected_unmatched_risk"],
+            row["_projected_unmatched_risk_raw"],
+            f"{label}.projected_unmatched_risk",
+        )
+        _assert_close(item["score"], row["_recommendation_score_raw"], f"{label}.score")
+        _assert_close(
+            item["distance_km"],
+            row[distance_column] if row[distance_column] != "" else None,
+            f"{label}.distance_km",
+        )
+        _assert_close(item["capacity"], row["Capacity"], f"{label}.capacity")
+        _assert_close(
+            item["applicants_per_seat"],
+            row["Applicants / seat"] if row["Applicants / seat"] != "" else None,
+            f"{label}.applicants_per_seat",
+        )
+        assert item["estimated_mtb_rank"] == (
+            row["Estimated MTB rank"] if row["Estimated MTB rank"] != "" else None
+        ), label
+        fallback_expected = fallback_expected or bool(row["_similarity_fallback_mode"])
+
+    assert payload["similarity_fallback_mode"] == fallback_expected
+
+
+def test_recommend_rejects_invalid_student_id(client):
+    fixture = RECOMMENDATION_FIXTURES[0]
+    response = client.post(
+        "/recommend",
+        params={"lang": "en"},
+        json={
+            "student_id": "12345678-9",
+            "wishes": _wire_wishes(fixture, explicit_groups=False),
+        },
+    )
+    assert response.status_code == 422
+    assert response.json()["error_key"] == "The RUN check digit is invalid."
+
+
+@pytest.mark.parametrize("count", [1, 11])
+def test_recommend_rejects_out_of_range_counts(client, count):
+    fixture = RECOMMENDATION_FIXTURES[0]
+    response = client.post(
+        "/recommend",
+        json={
+            "student_id": fixture["inputs"]["student_id"],
+            "wishes": _wire_wishes(fixture, explicit_groups=False),
+            "max_recommendations": count,
+        },
+    )
+    assert response.status_code == 422
+    assert response.json()["error_key"] == "validation_error"
+
+
+# ---------------------------------------------------------------------------
+# /geocode — never touches the network
+# ---------------------------------------------------------------------------
+
+FAKE_GEOCODE_OK = {
+    "ok": True,
+    "address": "Av. Siempre Viva 742, Santiago",
+    "lat": -33.4489,
+    "lon": -70.6693,
+    "display_name": "Av. Siempre Viva 742, Santiago, Chile",
+    "precision": "street",
+    "house_number_requested": "742",
+}
+
+FAKE_GEOCODE_ERROR = {
+    "ok": False,
+    "address": "nowhere",
+    "error_key": "No result found for this address in Chile.",
+    "error_kwargs": {},
+}
+
+
+def test_geocode_ok_with_precision_warning(client, monkeypatch):
+    calls: list[str] = []
+
+    def fake_geocode(address: str) -> dict:
+        calls.append(address)
+        return dict(FAKE_GEOCODE_OK)
+
+    monkeypatch.setattr(api, "geocode_chilean_address", fake_geocode)
+
+    response = client.post(
+        "/geocode",
+        params={"lang": "en"},
+        json={"address": "Av. Siempre Viva 742, Santiago"},
+    )
+    assert response.status_code == 200
+    payload = response.json()
+
+    assert calls == ["Av. Siempre Viva 742, Santiago"]
+    assert payload["ok"] is True
+    assert payload["lat"] == pytest.approx(-33.4489)
+    assert payload["lon"] == pytest.approx(-70.6693)
+    assert payload["precision"] == "street"
+    assert payload["display_name"] == FAKE_GEOCODE_OK["display_name"]
+    assert payload["error_key"] is None
+    assert payload["params"] == {}
+    assert payload["warning_key"].startswith("The geocoder found the street")
+    assert payload["message"] == payload["warning_key"]
+
+    spanish = client.post(
+        "/geocode", json={"address": "Av. Siempre Viva 742, Santiago"}
+    ).json()
+    assert spanish["warning_key"] == payload["warning_key"]
+    assert spanish["message"] != payload["message"]
+    assert spanish["message"].startswith("El geocodificador")
+
+
+def test_geocode_exact_address_has_no_warning(client, monkeypatch):
+    monkeypatch.setattr(
+        api,
+        "geocode_chilean_address",
+        lambda address: {**FAKE_GEOCODE_OK, "precision": "address"},
+    )
+    payload = client.post("/geocode", json={"address": "somewhere"}).json()
+
+    assert payload["ok"] is True
+    assert payload["warning_key"] is None
+    assert payload["message"] == ""
+
+
+def test_geocode_error_is_translated(client, monkeypatch):
+    monkeypatch.setattr(
+        api, "geocode_chilean_address", lambda address: dict(FAKE_GEOCODE_ERROR)
+    )
+
+    english = client.post(
+        "/geocode", params={"lang": "en"}, json={"address": "nowhere"}
+    ).json()
+    spanish = client.post("/geocode", json={"address": "nowhere"}).json()
+
+    # A geocoding failure is a 200 with ok=false, not an HTTP error: the
+    # address itself was well-formed.
+    assert english["ok"] is False
+    assert english["lat"] is None and english["lon"] is None
+    assert english["error_key"] == FAKE_GEOCODE_ERROR["error_key"]
+    assert english["message"] == FAKE_GEOCODE_ERROR["error_key"]
+    assert spanish["message"] != english["message"]
+
+
+def test_geocode_error_params_are_returned(client, monkeypatch):
+    monkeypatch.setattr(
+        api,
+        "geocode_chilean_address",
+        lambda address: {
+            "ok": False,
+            "address": address,
+            "error_key": "Geocoding service returned status {status}.",
+            "error_kwargs": {"status": 503},
+        },
+    )
+    payload = client.post(
+        "/geocode", params={"lang": "en"}, json={"address": "x"}
+    ).json()
+
+    assert payload["params"] == {"status": 503}
+    assert payload["message"] == "Geocoding service returned status 503."
+
+
+def test_geocode_rate_limit(client, monkeypatch):
+    monkeypatch.setattr(
+        api, "geocode_chilean_address", lambda address: dict(FAKE_GEOCODE_OK)
+    )
+
+    for _ in range(api.GEOCODE_RATE_LIMIT_REQUESTS):
+        assert client.post("/geocode", json={"address": "x"}).status_code == 200
+
+    blocked = client.post("/geocode", params={"lang": "en"}, json={"address": "x"})
+    assert blocked.status_code == 429
+    body = blocked.json()
+    assert set(body) == {"error_key", "message", "params"}
+    assert body["error_key"] == "rate_limited"
+    assert body["params"] == {
+        "limit": api.GEOCODE_RATE_LIMIT_REQUESTS,
+        "window_seconds": int(api.GEOCODE_RATE_LIMIT_WINDOW_SECONDS),
+    }
+
+    api._GEOCODE_RATE_LIMITER.reset()
+    assert client.post("/geocode", json={"address": "x"}).status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# OpenAPI export
+# ---------------------------------------------------------------------------
+
+def test_openapi_export_matches_committed_schema():
+    """web/lib/api/openapi.json is a build artifact, kept in sync by the script."""
+    import scripts.export_openapi as export_openapi
+
+    committed = export_openapi.OUTPUT_PATH
+    assert committed.exists(), (
+        f"{committed} is missing — run .venv/bin/python scripts/export_openapi.py"
+    )
+    assert committed.read_text(encoding="utf-8") == export_openapi.render_schema(), (
+        "openapi.json is stale — run .venv/bin/python scripts/export_openapi.py"
+    )

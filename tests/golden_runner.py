@@ -14,19 +14,10 @@ called" logic exists once. The call sequences below mirror, step by step:
 * recommendations        -> ``sae_app/ui_recommendations.py``
                             (same constants, same argument order)
 
-Streamlit note: ``sae_app.recommendations`` uses ``st.session_state`` as its
-candidate-risk cache. Outside ``streamlit run`` (bare mode) Streamlit provides a
-warning-only dict fallback, which is enough for this module, so nothing is
-monkeypatched here. If a future Streamlit release turns that fallback into an
-exception, replace it locally with a tiny stand-in instead of editing
-``sae_app/``::
-
-    class _FakeStreamlit:
-        session_state: dict = {}
-    monkeypatch.setattr(sae_app.recommendations, "st", _FakeStreamlit())
-
-``clear_candidate_risk_cache()`` is called before every recommendation run so a
-scenario never inherits another scenario's cached candidate metrics.
+Cache note: ``recommend_similar_programs`` owns its candidate-risk cache. No
+``candidate_cache`` is passed here, so every recommendation run builds a fresh
+``CandidateRiskCache`` that lives only for that call — a scenario can never
+inherit another scenario's cached candidate metrics.
 """
 
 from __future__ import annotations
@@ -74,7 +65,6 @@ from sae_app.recommendations import (  # noqa: E402
     RECOMMENDATION_MIN_SIMILARITY_SCORE,
     RECOMMENDATION_PROXIMITY_WEIGHT,
     RECOMMENDATION_RISK_OPTIMIZATION_WEIGHT,
-    clear_candidate_risk_cache,
     recommend_similar_programs,
 )
 from sae_app.wish_list import (  # noqa: E402
@@ -317,7 +307,7 @@ def run_recommendations(
     )
     diversity_strength = RECOMMENDATION_DIVERSITY_STRENGTH if RECOMMENDATION_DIVERSIFY else 0.0
 
-    clear_candidate_risk_cache()
+    # No ``candidate_cache`` argument: the call creates and discards its own.
     recommendations, _profile_table = recommend_similar_programs(
         edited,
         program_mapping,

@@ -1,6 +1,29 @@
+"""Translations and the Streamlit-free ``t()`` helper.
+
+English source strings *are* the translation keys (see CLAUDE.md, "i18n
+contract"): ``t("Some English text")`` looks the string up in
+``TRANSLATIONS[lang]`` and falls back to the key unchanged when missing.
+
+The active language is request-scoped, held in a :class:`contextvars.ContextVar`
+so that concurrent FastAPI requests (and Streamlit script runs, which execute in
+a fresh thread each rerun) never share a mutable global. Callers that know their
+language explicitly should pass ``lang=`` instead of relying on the ambient
+value.
+"""
+
 from __future__ import annotations
 
-import streamlit as st
+import contextvars
+from contextlib import contextmanager
+from typing import Iterator, Optional
+
+
+DEFAULT_LANGUAGE = "es"
+SUPPORTED_LANGUAGES = ("es", "en")
+
+CURRENT_LANGUAGE: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "sae_app_current_language", default=DEFAULT_LANGUAGE
+)
 
 
 TRANSLATIONS = {
@@ -285,6 +308,12 @@ TRANSLATIONS = {
         "The RUN check digit is invalid.": "El dígito verificador del RUN es inválido.",
         "Invalid IPE format. Enter the nine-digit IPE plus its numeric verifier digit, for example 111222333-4. Dots and the hyphen are optional.": "Formato IPE inválido. Ingresa el IPE de nueve dígitos y su dígito verificador numérico, por ejemplo 111222333-4. Los puntos y el guion son opcionales.",
         "Add at least one valid wish.": "Agrega al menos una preferencia válida.",
+        # HTTP-API error messages (api.py). They never reach the Streamlit
+        # prototype, but the i18n contract is one table for both front ends.
+        "The request could not be read. Check the submitted fields.": "No se pudo leer la solicitud. Revisa los campos enviados.",
+        "The program {program_id} appears more than once in the list.": "El programa {program_id} aparece más de una vez en la lista.",
+        "Unknown program identifier: {program_id}.": "Identificador de programa desconocido: {program_id}.",
+        "Too many address lookups. Wait a moment and try again.": "Demasiadas búsquedas de dirección. Espera un momento y vuelve a intentarlo.",
         "4. Recommended similar programs": "4. Programas similares recomendados",
         "Find additional programs similar to the current wish list": "Buscar programas adicionales similares a la lista actual",
         "Enter at least one valid program in the wish list to get recommendations.": "Ingresa al menos un programa válido en la lista para obtener recomendaciones.",
@@ -368,23 +397,68 @@ TRANSLATIONS = {
 }
 
 
-def t(key: str, **kwargs) -> str:
-    """Translate a user-facing string while leaving unknown keys unchanged."""
-    lang = st.session_state.get("lang", "es")
-    text = TRANSLATIONS.get(lang, {}).get(str(key), str(key))
+def set_language(lang: Optional[str]) -> contextvars.Token:
+    """Set the ambient language for the current context; returns a reset token."""
+    return CURRENT_LANGUAGE.set(normalize_language(lang))
+
+
+def reset_language(token: contextvars.Token) -> None:
+    """Restore the ambient language to the value captured by ``token``."""
+    CURRENT_LANGUAGE.reset(token)
+
+
+def get_language() -> str:
+    """Return the ambient language for the current context."""
+    return CURRENT_LANGUAGE.get()
+
+
+@contextmanager
+def language(lang: Optional[str]) -> Iterator[str]:
+    """Context manager scoping the ambient language to ``lang``."""
+    token = set_language(lang)
+    try:
+        yield get_language()
+    finally:
+        reset_language(token)
+
+
+def normalize_language(lang: Optional[str]) -> str:
+    """Map an arbitrary language request onto a supported language code."""
+    if lang is None:
+        return DEFAULT_LANGUAGE
+    code = str(lang).strip().lower().replace("_", "-")
+    if not code:
+        return DEFAULT_LANGUAGE
+    if code in SUPPORTED_LANGUAGES:
+        return code
+    primary = code.split("-", 1)[0]
+    if primary in SUPPORTED_LANGUAGES:
+        return primary
+    return DEFAULT_LANGUAGE
+
+
+def t(key: str, *, lang: Optional[str] = None, **kwargs) -> str:
+    """Translate a user-facing string while leaving unknown keys unchanged.
+
+    ``lang`` is keyword-only so it can never collide with a ``{...}`` format
+    placeholder passed through ``**kwargs``; when omitted the ambient
+    request-scoped language (``CURRENT_LANGUAGE``) is used.
+    """
+    active = CURRENT_LANGUAGE.get() if lang is None else normalize_language(lang)
+    text = TRANSLATIONS.get(active, {}).get(str(key), str(key))
     return text.format(**kwargs) if kwargs else text
 
 
-def format_option_label(value) -> str:
+def format_option_label(value, *, lang: Optional[str] = None) -> str:
     """Translate selectbox/multiselect display labels without changing stored values."""
-    return t(str(value))
+    return t(str(value), lang=lang)
 
 
-def display_outcome_label(value) -> str:
+def display_outcome_label(value, *, lang: Optional[str] = None) -> str:
     """Return a family-facing outcome label."""
     text = str(value).strip()
     if text == "Unmatched":
-        return t("Unmatched")
+        return t("Unmatched", lang=lang)
     if " · RBD " in text:
         before_rbd = text.split(" · RBD ", 1)[0].strip()
         if " — " in before_rbd:
@@ -392,18 +466,3 @@ def display_outcome_label(value) -> str:
             if " · " in detail_part:
                 return school_part.strip()
     return text
-
-
-def initialize_language_selector() -> None:
-    """Create the language selector. Spanish is the default interface language."""
-    if "lang" not in st.session_state:
-        st.session_state["lang"] = "es"
-
-    lang_choice = st.sidebar.selectbox(
-        "Idioma / Language",
-        options=["es", "en"],
-        format_func=lambda x: "Español" if x == "es" else "English",
-        index=["es", "en"].index(st.session_state.get("lang", "es")),
-        key="language_selector_mtb",
-    )
-    st.session_state["lang"] = lang_choice
