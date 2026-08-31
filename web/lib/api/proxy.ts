@@ -17,7 +17,9 @@
  * Request headers are rebuilt, not relayed: only the three in
  * `FORWARDED_REQUEST_HEADERS` cross over (no cookies, no authorization), plus
  * one `X-Forwarded-For` this hop derives itself so FastAPI's per-IP geocoding
- * budget can be per browser rather than per proxy — see `clientAddress`.
+ * budget can be per browser rather than per proxy — see `clientAddress`, and
+ * the `TRUST_PROXY` flag that governs whether an incoming chain may be
+ * believed at all.
  *
  * The URL building is kept as a pure function so it can be unit-tested without
  * a running Next.js server.
@@ -48,11 +50,29 @@ const FORWARDED_REQUEST_HEADERS = [
 
 /**
  * Placeholder client address for a request whose origin cannot be established
- * — a direct browser→Next connection (`pnpm dev`), or a platform that does not
- * populate `X-Forwarded-For`. Every such caller shares one rate-limit bucket
- * upstream, which is exactly what happened before this header existed.
+ * — a direct browser→Next connection (`pnpm dev`), a platform that does not
+ * populate `X-Forwarded-For`, or a deployment that has not opted into trusting
+ * one. Every such caller shares one rate-limit bucket upstream, which is
+ * exactly what happened before this header existed.
  */
 export const UNKNOWN_CLIENT_ADDRESS = "unknown";
+
+/**
+ * Whether a hop in front of this process is trusted to set `X-Forwarded-For`.
+ *
+ * Opt-in (`TRUST_PROXY=1`), because the header is trustworthy only when
+ * something the operator controls writes it. With Next.js exposed directly to
+ * the internet, a request's `X-Forwarded-For` is pure client input: honouring
+ * it would let one caller mint a fresh rate-limit bucket per request by
+ * sending a different value each time, which is strictly worse than having no
+ * header at all. Off, every caller shares the `unknown` bucket — the upstream
+ * budget then throttles everyone together, which is the safe failure.
+ */
+export function trustsForwardedFor(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  return env.TRUST_PROXY?.trim() === "1";
+}
 
 /** Response headers forwarded FastAPI → browser. */
 const FORWARDED_RESPONSE_HEADERS = ["content-type", "retry-after"] as const;
@@ -101,10 +121,15 @@ export function buildUpstreamUrl(
  * removed and there is no `connection()` equivalent for it), so the only
  * source is the `X-Forwarded-For` a platform proxy set. Its *rightmost* entry
  * is the address that proxy observed; entries to its left are whatever the
- * client claimed and are worth nothing. Without such a proxy in front there is
- * no trustworthy value and none is invented.
+ * client claimed and are worth nothing. Without a proxy in front — the default
+ * until `TRUST_PROXY=1` says otherwise — the header is client input and is
+ * ignored outright: no trustworthy value exists and none is invented.
  */
-export function clientAddress(request: Request): string {
+export function clientAddress(
+  request: Request,
+  env: Record<string, string | undefined> = process.env,
+): string {
+  if (!trustsForwardedFor(env)) return UNKNOWN_CLIENT_ADDRESS;
   const forwarded = request.headers.get("x-forwarded-for");
   if (!forwarded) return UNKNOWN_CLIENT_ADDRESS;
   const entries = forwarded
@@ -114,7 +139,10 @@ export function clientAddress(request: Request): string {
   return entries.at(-1) ?? UNKNOWN_CLIENT_ADDRESS;
 }
 
-function forwardedRequestHeaders(request: Request): Headers {
+function forwardedRequestHeaders(
+  request: Request,
+  env: Record<string, string | undefined>,
+): Headers {
   const headers = new Headers();
   for (const name of FORWARDED_REQUEST_HEADERS) {
     const value = request.headers.get(name);
@@ -129,9 +157,10 @@ function forwardedRequestHeaders(request: Request): Headers {
   // The header is *set*, not relayed and extended: the incoming chain's
   // leftmost entries are unverified client claims, and Next 16 gives a route
   // handler no peer address of its own to append, so the one derived value is
-  // all this hop can honestly assert. It is an address — no part of the
-  // request body ever reaches a header (MIGRATION.md §4.5).
-  headers.set("x-forwarded-for", clientAddress(request));
+  // all this hop can honestly assert. Without TRUST_PROXY that value is the
+  // shared placeholder. It is an address either way — no part of the request
+  // body ever reaches a header (MIGRATION.md §4.5).
+  headers.set("x-forwarded-for", clientAddress(request, env));
   return headers;
 }
 
@@ -172,16 +201,21 @@ function errorEnvelopeResponse(
 export async function proxyRequest(
   request: Request,
   segments: readonly string[],
-  options: { baseUrl?: string; fetch?: typeof fetch } = {},
+  options: {
+    baseUrl?: string;
+    fetch?: typeof fetch;
+    env?: Record<string, string | undefined>;
+  } = {},
 ): Promise<Response> {
   const doFetch = options.fetch ?? globalThis.fetch;
+  const env = options.env ?? process.env;
 
   let url: string;
   try {
     url = buildUpstreamUrl(
       segments,
       new URL(request.url).search,
-      options.baseUrl ?? upstreamBaseUrl(),
+      options.baseUrl ?? upstreamBaseUrl(env),
     );
   } catch {
     // The message deliberately omits the path: it is attacker-controlled.
@@ -195,7 +229,7 @@ export async function proxyRequest(
   try {
     upstream = await doFetch(url, {
       method,
-      headers: forwardedRequestHeaders(request),
+      headers: forwardedRequestHeaders(request, env),
       body,
       redirect: "manual",
       cache: "no-store",

@@ -12,7 +12,11 @@ carry a fixed home coordinate that was never geocoded.
 from __future__ import annotations
 
 import json
+import logging
 import sys
+import threading
+import time
+from contextlib import contextmanager
 from pathlib import Path
 
 TESTS_DIR = Path(__file__).resolve().parent
@@ -21,7 +25,10 @@ for _path in (str(REPO_ROOT), str(TESTS_DIR)):
     if _path not in sys.path:
         sys.path.insert(0, _path)
 
+import httpx  # noqa: E402
 import pytest  # noqa: E402
+import uvicorn  # noqa: E402
+from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 import api  # noqa: E402
@@ -1046,6 +1053,158 @@ def test_trusted_proxies_default_and_env_parsing():
     assert api._parse_trusted_proxies("::FFFF:127.0.0.1") == frozenset(
         {"::ffff:127.0.0.1"}
     )
+
+
+# ---------------------------------------------------------------------------
+# CORS
+# ---------------------------------------------------------------------------
+
+def _cors_probe(app: FastAPI) -> httpx.Response:
+    """GET /health with an Origin, without running the lifespan.
+
+    ``/health`` needs no calibration data, and a second lifespan would clear
+    the module-level ``api.STATE`` the module-scoped ``client`` fixture is
+    still using — so this deliberately does not enter the TestClient as a
+    context manager.
+    """
+    return TestClient(app).get(
+        "/health", headers={"origin": "https://sae.example.cl"}
+    )
+
+
+def test_no_cors_headers_by_default(client):
+    """The Next.js proxy makes every browser call same-origin (MIGRATION.md §2).
+
+    With SAE_CORS_ORIGINS unset the middleware is not installed at all, so no
+    response ever carries an Access-Control-Allow-Origin a foreign page could
+    use to read a family's simulation.
+    """
+    assert api.cors_origins("") == []
+    response = client.get("/health", headers={"origin": "https://evil.example"})
+    assert response.status_code == 200
+    assert "access-control-allow-origin" not in response.headers
+
+    # And the same for the app as it is actually built from the environment.
+    assert _cors_probe(api.create_app()).headers.get(
+        "access-control-allow-origin"
+    ) is None
+
+
+def test_cors_allows_only_the_configured_origins(monkeypatch):
+    monkeypatch.setenv("SAE_CORS_ORIGINS", "https://sae.example.cl, https://b.example")
+    assert api.cors_origins() == ["https://sae.example.cl", "https://b.example"]
+
+    app = api.create_app()
+    allowed = _cors_probe(app)
+    assert allowed.status_code == 200
+    assert allowed.headers["access-control-allow-origin"] == "https://sae.example.cl"
+
+    denied = TestClient(app).get("/health", headers={"origin": "https://evil.example"})
+    assert "access-control-allow-origin" not in denied.headers
+
+
+def test_cors_origins_parsing(monkeypatch):
+    monkeypatch.delenv("SAE_CORS_ORIGINS", raising=False)
+    assert api.cors_origins() == []  # unset environment
+    assert api.cors_origins("") == []
+    assert api.cors_origins("   ") == []
+    assert api.cors_origins(",  ,") == []
+    assert api.cors_origins("https://a.example") == ["https://a.example"]
+    assert api.cors_origins(" https://a.example , https://b.example ,") == [
+        "https://a.example",
+        "https://b.example",
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Access logging
+# ---------------------------------------------------------------------------
+
+@contextmanager
+def _live_uvicorn_server(app):
+    """Serve ``app`` on an ephemeral port with uvicorn's own access logging.
+
+    TestClient bypasses the HTTP protocol layer, so it never writes an access
+    line — the very thing under test. ``log_config=None`` leaves logging
+    unconfigured, so ``uvicorn.access`` records propagate to the root logger
+    where ``caplog`` can see them.
+
+    The lifespan of this second server shares (and on shutdown clears) the
+    module-level ``api.STATE``, so it is snapshotted and handed back.
+    """
+    saved_state = dict(api.STATE)
+    # uvicorn only emits access lines when the logger has a handler; pytest's
+    # capture handler sits on the root logger, but make it explicit so the test
+    # does not depend on that.
+    access_logger = logging.getLogger("uvicorn.access")
+    guard = logging.NullHandler()
+    access_logger.addHandler(guard)
+
+    config = uvicorn.Config(
+        app,
+        host="127.0.0.1",
+        port=0,
+        log_config=None,
+        access_log=True,
+        lifespan="on",
+    )
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=server.run, daemon=True)
+    thread.start()
+    try:
+        deadline = time.monotonic() + 60
+        while not server.started:
+            assert thread.is_alive(), "uvicorn died during startup"
+            assert time.monotonic() < deadline, "uvicorn did not start in time"
+            time.sleep(0.05)
+        port = server.servers[0].sockets[0].getsockname()[1]
+        yield f"http://127.0.0.1:{port}"
+    finally:
+        server.should_exit = True
+        thread.join(timeout=60)
+        access_logger.removeHandler(guard)
+        api.STATE.clear()
+        api.STATE.update(saved_state)
+        api._GEOCODE_RATE_LIMITER.reset()
+
+
+def test_access_log_never_carries_the_student_identifier(caplog):
+    """MIGRATION.md §4.5: the RUN reaches no log, uvicorn's access log included.
+
+    Uvicorn logs ``client - "METHOD path HTTP/1.1" status`` — method, path and
+    query string only. The RUN only ever travels in a POST body, so this holds
+    as long as no endpoint moves an identifier into the URL.
+    """
+    fixture = STRICT_FIXTURES[0]
+    run = fixture["inputs"]["student_id"]
+    body = {
+        "student_id": run,
+        "wishes": _wire_wishes(fixture, explicit_groups=False),
+    }
+    digits = "".join(ch for ch in run if ch.isdigit())
+    assert len(digits) >= 7, "fixture RUN is too short to make this test meaningful"
+
+    with caplog.at_level(logging.DEBUG):
+        with _live_uvicorn_server(api.app) as base_url:
+            response = httpx.post(f"{base_url}/simulate?lang=es", json=body, timeout=120)
+
+    assert response.status_code == 200, response.text
+
+    access_lines = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == "uvicorn.access"
+    ]
+    assert access_lines, "uvicorn wrote no access log record"
+    assert any('"POST /simulate?lang=es HTTP/1.1" 200' in line for line in access_lines)
+
+    # Neither the identifier nor any bare digit run of it appears anywhere in
+    # what was logged — by uvicorn or by anything else in the process.
+    for line in access_lines:
+        assert run not in line
+        assert digits not in line
+    assert run not in caplog.text
+    assert digits not in caplog.text
 
 
 # ---------------------------------------------------------------------------

@@ -113,6 +113,7 @@ export function MultiSelectFilter({
         <PopoverContent
           align="start"
           className="w-(--radix-popover-trigger-width) min-w-56 p-0"
+          aria-label={label}
         >
           <Command>
             <CommandInput placeholder={t("multi.search")} />

@@ -133,6 +133,7 @@ export function ProgramSearch({
           <PopoverContent
             align="start"
             className="w-(--radix-popover-trigger-width) min-w-72 p-0"
+            aria-label={t("search.label")}
           >
             {/* Server-side search: cmdk must not re-filter what came back. */}
             <Command shouldFilter={false}>

@@ -55,9 +55,9 @@ export function AddressSection({
   return (
     <section className="flex flex-col gap-3" data-testid="improve-address">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-base font-semibold">
+        <h2 className="text-base font-semibold">
           {t("improve.address.sectionTitle")}
-        </h3>
+        </h2>
         <Popover>
           <PopoverTrigger asChild>
             <Button variant="ghost" size="sm">
@@ -65,7 +65,11 @@ export function AddressSection({
               {t("improve.address.privacyTitle")}
             </Button>
           </PopoverTrigger>
-          <PopoverContent align="end" className="w-80">
+          <PopoverContent
+            align="end"
+            className="w-80"
+            aria-label={t("improve.address.privacyTitle")}
+          >
             <PopoverHeader>
               <PopoverTitle>{t("improve.address.privacyTitle")}</PopoverTitle>
               <PopoverDescription>

@@ -117,7 +117,7 @@ describe("message ids resolve in both locales", () => {
     "student.idRequiredHint",
     "errors.invalidStudentId",
     "errors.invalidRunCheckDigit",
-    "list.filters.region.label",
+    "filters.region.label",
     "result.explain.chanceShort",
     "improve.methodNote",
   ])("the step bodies have %s", (key) => {

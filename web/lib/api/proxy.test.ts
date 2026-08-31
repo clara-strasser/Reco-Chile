@@ -4,9 +4,13 @@ import {
   clientAddress,
   DEFAULT_UPSTREAM_BASE_URL,
   proxyRequest,
+  trustsForwardedFor,
   UNKNOWN_CLIENT_ADDRESS,
   upstreamBaseUrl,
 } from "./proxy";
+
+/** Env of a deployment that sits behind a proxy it controls. */
+const TRUSTING_ENV = { TRUST_PROXY: "1" };
 
 const RUN = "11111111-1";
 const SIMULATE_BODY = JSON.stringify({
@@ -82,6 +86,18 @@ describe("buildUpstreamUrl", () => {
   });
 });
 
+describe("trustsForwardedFor", () => {
+  it("is opt-in through TRUST_PROXY=1 and nothing else", () => {
+    expect(trustsForwardedFor({})).toBe(false);
+    expect(trustsForwardedFor({ TRUST_PROXY: "1" })).toBe(true);
+    // Tolerate the whitespace a compose file or a .env line can leave behind.
+    expect(trustsForwardedFor({ TRUST_PROXY: "  1  " })).toBe(true);
+    for (const value of ["", "0", "true", "yes", "on", "11"]) {
+      expect(trustsForwardedFor({ TRUST_PROXY: value })).toBe(false);
+    }
+  });
+});
+
 describe("clientAddress", () => {
   function requestWith(forwarded?: string) {
     return new Request(
@@ -93,19 +109,44 @@ describe("clientAddress", () => {
   }
 
   it("takes the rightmost entry — the one the trusted hop observed", () => {
-    expect(clientAddress(requestWith("203.0.113.7"))).toBe("203.0.113.7");
-    expect(clientAddress(requestWith("198.51.100.1, 203.0.113.7"))).toBe(
+    expect(clientAddress(requestWith("203.0.113.7"), TRUSTING_ENV)).toBe(
       "203.0.113.7",
     );
-    expect(clientAddress(requestWith("  198.51.100.1 ,  203.0.113.7  "))).toBe(
-      "203.0.113.7",
-    );
+    expect(
+      clientAddress(requestWith("198.51.100.1, 203.0.113.7"), TRUSTING_ENV),
+    ).toBe("203.0.113.7");
+    expect(
+      clientAddress(
+        requestWith("  198.51.100.1 ,  203.0.113.7  "),
+        TRUSTING_ENV,
+      ),
+    ).toBe("203.0.113.7");
   });
 
   it("falls back to a placeholder when no hop supplied one", () => {
-    expect(clientAddress(requestWith())).toBe(UNKNOWN_CLIENT_ADDRESS);
-    expect(clientAddress(requestWith("   "))).toBe(UNKNOWN_CLIENT_ADDRESS);
-    expect(clientAddress(requestWith(" , , "))).toBe(UNKNOWN_CLIENT_ADDRESS);
+    expect(clientAddress(requestWith(), TRUSTING_ENV)).toBe(
+      UNKNOWN_CLIENT_ADDRESS,
+    );
+    expect(clientAddress(requestWith("   "), TRUSTING_ENV)).toBe(
+      UNKNOWN_CLIENT_ADDRESS,
+    );
+    expect(clientAddress(requestWith(" , , "), TRUSTING_ENV)).toBe(
+      UNKNOWN_CLIENT_ADDRESS,
+    );
+  });
+
+  it("ignores the header entirely when no proxy is trusted", () => {
+    // An exposed Next.js: X-Forwarded-For is client input, so believing it
+    // would let one caller mint a fresh upstream rate-limit bucket per
+    // request. Everyone shares the placeholder bucket instead.
+    for (const env of [{}, { TRUST_PROXY: "0" }, { TRUST_PROXY: "true" }]) {
+      expect(clientAddress(requestWith("203.0.113.7"), env)).toBe(
+        UNKNOWN_CLIENT_ADDRESS,
+      );
+      expect(clientAddress(requestWith("198.51.100.1, 203.0.113.7"), env)).toBe(
+        UNKNOWN_CLIENT_ADDRESS,
+      );
+    }
   });
 });
 
@@ -266,12 +307,34 @@ describe("proxyRequest", () => {
     await proxyRequest(request, ["geocode"], {
       baseUrl: "http://localhost:8000",
       fetch: doFetch,
+      env: TRUSTING_ENV,
     });
 
     const forwarded = new Headers(calls[0].init.headers);
     // Set, not relayed: the unverified leftmost claim does not reach FastAPI,
     // and the value it buckets on is the rightmost entry either way.
     expect(forwarded.get("x-forwarded-for")).toBe("203.0.113.7");
+  });
+
+  it("sends the placeholder instead of a spoofable address without TRUST_PROXY", async () => {
+    const { calls, doFetch } = stubFetch(Response.json({}, { status: 200 }));
+    const request = new Request("http://localhost:3000/api/geocode", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-forwarded-for": "198.51.100.1, 203.0.113.7",
+      },
+      body: JSON.stringify({ address: "Av. Siempre Viva 742" }),
+    });
+
+    await proxyRequest(request, ["geocode"], {
+      baseUrl: "http://localhost:8000",
+      fetch: doFetch,
+      env: {},
+    });
+
+    const forwarded = new Headers(calls[0].init.headers);
+    expect(forwarded.get("x-forwarded-for")).toBe(UNKNOWN_CLIENT_ADDRESS);
   });
 
   it("still sends a placeholder address when no hop supplied one", async () => {
@@ -283,7 +346,7 @@ describe("proxyRequest", () => {
         body: JSON.stringify({ address: "x" }),
       }),
       ["geocode"],
-      { baseUrl: "http://localhost:8000", fetch: doFetch },
+      { baseUrl: "http://localhost:8000", fetch: doFetch, env: TRUSTING_ENV },
     );
 
     const forwarded = new Headers(calls[0].init.headers);
@@ -307,6 +370,7 @@ describe("proxyRequest", () => {
     await proxyRequest(request, ["simulate"], {
       baseUrl: "http://localhost:8000",
       fetch: doFetch,
+      env: TRUSTING_ENV,
     });
 
     const forwarded = new Headers(calls[0].init.headers);

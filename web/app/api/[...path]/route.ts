@@ -8,6 +8,10 @@
  *
  * PRIVACY: request bodies (RUN/IPE, home address) are never logged here or in
  * `proxy.ts` — MIGRATION.md §4.5.
+ *
+ * Deployment: set `TRUST_PROXY=1` only when a reverse proxy you control always
+ * rewrites `X-Forwarded-For`; see `clientAddress` in `proxy.ts` and
+ * `.env.example`.
  */
 import { proxyRequest } from "@/lib/api/proxy";
 

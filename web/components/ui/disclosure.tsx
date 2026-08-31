@@ -3,10 +3,13 @@
 /**
  * The prototype's `st.expander` as a shadcn `Collapsible`.
  *
- * Every "Show all…", "See the detailed calculation…", "Technical details…"
- * block on this step is one of these, so the trigger affordance (chevron,
- * focus ring, hit area) is defined once. Closed by default, exactly like
- * `expanded=False` in `ui_simulation.py`.
+ * Every "Show all…", "See the detailed calculation…", "Technical details…",
+ * "How are the recommendations built?" block in the wizard is one of these, so
+ * the trigger affordance (chevron, focus ring, hit area) is defined once.
+ * Closed by default, exactly like `expanded=False` in `ui_simulation.py`.
+ *
+ * It started out under `components/result/`; steps 3 and 4 both need it, so it
+ * lives with the other primitives now.
  */
 
 import * as React from "react";

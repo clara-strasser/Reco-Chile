@@ -83,6 +83,71 @@ const EQUIV_STABLE = golden("equiv_01_two_tied_stable_outcome");
 const EQUIV_OUTCOME_CHANGES = golden("equiv_02_two_groups_of_three");
 const EQUIV_SHIFT = golden("equiv_03_group_of_four_probability_shift");
 
+/**
+ * Ties mode over a list where nothing is actually tied: the same three wishes
+ * as `strict_02`, each still in its own preference group. `count_equivalence_
+ * orders` answers 1, so `/simulate` returns `equivalence_sensitivity: null` —
+ * and the step must still render what `app.py` renders, because the *mode* is
+ * what decides the block (MIGRATION.md §9, Phase 4 "Open → Phase 6").
+ */
+const TIES_WITHOUT_GROUPS: Fixture = (() => {
+  const base = golden("strict_02_three_wishes");
+  return {
+    ...base,
+    name: "ties_mode_without_groups",
+    inputs: { ...base.inputs, use_equivalence_classes: true },
+  };
+})();
+
+/**
+ * Six programs in one group — 6! = 720 compatible strict orders, the largest
+ * count that is still quick to compute for a test (the reachable maximum is
+ * 7! = 5,040). It exists to prove the technical table does not put every order
+ * in the DOM at once.
+ */
+const SIX_IN_ONE_GROUP: Fixture = {
+  name: "six_wishes_one_group",
+  inputs: {
+    student_id: STRICT.inputs.student_id,
+    use_equivalence_classes: true,
+    wishes: STRICT.inputs.wishes
+      .slice(0, 6)
+      .map((wish) => ({ ...wish, preference_group: 1 })),
+  },
+  expected: {},
+};
+
+/** 6! — what `count_equivalence_orders` reports for one group of six. */
+const SIX_IN_ONE_GROUP_ORDERS = 720;
+
+/** Rows a permutation table shows before "Show more" (`PAGE_SIZE`). */
+const PAGE_SIZE = 50;
+
+/**
+ * `wish_list.predicted_outcome_from_choices`, restated from the fixture: the
+ * hard threshold wins, otherwise the most likely program. Used to assert the
+ * school the stable verdict names.
+ */
+function predictedOutcome(fixture: Fixture, hardThreshold: number): string {
+  const choices = referenceChoices(fixture);
+  if (unmatchedRisk(fixture) >= hardThreshold)
+    return es.enums.outcome.Unmatched;
+  const best = [...choices]
+    .filter((choice) => choice.choice_assignment_probability > 0)
+    .sort(
+      (a, b) =>
+        b.choice_assignment_probability - a.choice_assignment_probability,
+    )[0];
+  return best ? best.program : es.enums.outcome.Unmatched;
+}
+
+/** A catalogue sentence with its placeholders filled and its `<b>` dropped. */
+function copy(message: string, values: Record<string, string>): string {
+  return Object.entries(values)
+    .reduce((text, [key, value]) => text.replaceAll(`{${key}}`, value), message)
+    .replace(/<\/?b>/g, "");
+}
+
 /** The unmatched risk of a fixture, wherever it keeps it. */
 function unmatchedRisk(fixture: Fixture): number {
   if (typeof fixture.expected.unmatched_risk === "number") {
@@ -307,6 +372,103 @@ test.describe("result step — equivalence classes", () => {
     await expect(page.getByTestId("tied-order-view")).toHaveCount(0);
     // The family table belongs to strict mode only.
     await expect(page.getByTestId("family-table")).toHaveCount(0);
+  });
+
+  test("ties mode with nothing grouped renders the one-order block", async ({
+    page,
+  }) => {
+    // `app.py` branches on the mode, not on the order count: with the toggle on
+    // and every wish in its own group it still stores `mode: "equivalence"` and
+    // `render_simulation_result` prints the stable verdict over a single tested
+    // order. The API says `equivalence_sensitivity: null` here (nothing can be
+    // sensitive to a single order), so this asserts the client fills it in.
+    await openResult(page, TIES_WITHOUT_GROUPS);
+    const thresholds = await meta(page);
+    const outcome = predictedOutcome(
+      TIES_WITHOUT_GROUPS,
+      thresholds.hard_unmatched_threshold,
+    );
+
+    await expect(
+      page.getByRole("heading", { name: es.result.equivalence.question }),
+    ).toBeVisible();
+
+    const verdict = page.getByTestId("equivalence-verdict");
+    await expect(verdict).toHaveAttribute("data-verdict", "stable");
+    await expect(verdict).toHaveText(
+      copy(es.result.equivalence.verdict.stable, {
+        n: formatInt(1, "es"),
+        outcome,
+      }),
+    );
+    await expect(page.getByTestId("equivalence-block")).toContainText(
+      es.result.equivalence.advice.stable,
+    );
+
+    // Strict mode's family table and its "chance if considered" popover are
+    // never part of the equivalence layout; neither is the per-order view,
+    // which only opens when the verdict is not stable.
+    await expect(page.getByTestId("family-table-section")).toHaveCount(0);
+    await expect(page.getByTestId("tied-order-view")).toHaveCount(0);
+
+    // Both expanders are there, and the reference table is the golden one.
+    await page
+      .getByRole("button", { name: es.result.equivalence.referenceTitle })
+      .click();
+    const reference = page.getByTestId("reference-detail-table");
+    for (const choice of referenceChoices(TIES_WITHOUT_GROUPS)) {
+      await expect(
+        reference.getByRole("row").filter({ hasText: choice.program }),
+      ).toContainText(
+        formatPercent(choice.choice_assignment_probability, "es"),
+      );
+    }
+
+    await page
+      .getByRole("button", { name: es.result.equivalence.technicalTitle })
+      .click();
+    const technical = page.getByTestId("technical-variants-table");
+    // One header row and exactly one tested order.
+    await expect(technical.getByRole("row")).toHaveCount(2);
+    await expect(technical.getByRole("row").nth(1)).toContainText(outcome);
+    // A single page needs no pagination footer.
+    await expect(page.getByTestId("rows-shown")).toHaveCount(0);
+  });
+
+  test("a 720-order list pages the technical table instead of dumping it", async ({
+    page,
+  }) => {
+    // 720 permutations server-side and a ~340 KB response: slower than every
+    // other case here, and worth waiting for rather than trimming the list.
+    test.slow();
+    await openResult(page, SIX_IN_ONE_GROUP);
+
+    const verdict = page.getByTestId("equivalence-verdict");
+    await expect(verdict).toContainText(
+      formatInt(SIX_IN_ONE_GROUP_ORDERS, "es"),
+      { timeout: 60_000 },
+    );
+
+    await page
+      .getByRole("button", { name: es.result.equivalence.technicalTitle })
+      .click();
+
+    const rows = page.getByTestId("technical-variants-table").getByRole("row");
+    const showing = (shown: number) =>
+      copy(es.result.pagination.showing, {
+        shown: formatInt(shown, "es"),
+        total: formatInt(SIX_IN_ONE_GROUP_ORDERS, "es"),
+      });
+
+    // 720 orders, 50 rows in the DOM (plus the header).
+    await expect(rows).toHaveCount(PAGE_SIZE + 1);
+    await expect(page.getByTestId("rows-shown")).toHaveText(showing(PAGE_SIZE));
+
+    await page.getByTestId("show-more-rows").click();
+    await expect(rows).toHaveCount(2 * PAGE_SIZE + 1);
+    await expect(page.getByTestId("rows-shown")).toHaveText(
+      showing(2 * PAGE_SIZE),
+    );
   });
 
   test("a probability shift reports the min and max chance", async ({

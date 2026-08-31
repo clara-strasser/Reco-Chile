@@ -14,6 +14,16 @@ query parameter or ``Accept-Language`` header (default ``es``). Every other
 value — ``error_key``, filter options, priority tiers, ``"Unmatched"`` — stays
 an English internal code the frontend translates itself.
 
+Logging: nothing here logs a request body, and the access log must not either.
+Uvicorn's access line is ``client - "METHOD path HTTP/1.1" status`` — method,
+path and query string only, never the body — and the student's RUN/IPE and the
+family's home address only ever travel in POST bodies (MIGRATION.md §4.5), so
+the default access log is safe as it stands. Keep it that way: do not move an
+identifier into a path or query parameter, and do not add body logging or a
+``--log-config`` that dumps requests. ``tests/test_api_contract.py`` runs a
+real uvicorn server and asserts the RUN never reaches a ``uvicorn.access``
+record.
+
 Run with: uvicorn api:app --reload
 """
 
@@ -27,7 +37,7 @@ from contextlib import asynccontextmanager
 
 import numpy as np
 import pandas as pd
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.exception_handlers import http_exception_handler as default_http_exception_handler
 from fastapi.exceptions import RequestValidationError
@@ -42,6 +52,8 @@ from sae_app.constants import (
     EQUIV_GROUP,
     EQUIV_PROBABILITY_CHANGE_WARNING_THRESHOLD,
     GENDER_FILTER_OPTIONS,
+    GEOCODE_RATE_LIMIT_REQUESTS,
+    GEOCODE_RATE_LIMIT_WINDOW_SECONDS,
     HARD_UNMATCHED_THRESHOLD,
     IMPUTED,
     LOTTERY,
@@ -127,19 +139,16 @@ STATE: dict = {}
 
 API_VERSION = "1.0.0"
 
-# The wire cap on a wish list, mirrored by /meta so the frontend can disable
-# the control with the same number instead of hard-coding one.
+# The wire cap on a wish list (MAX_WISHES), mirrored by /meta so the frontend
+# can disable the control with the same number instead of hard-coding one,
+# lives in constants.py; it is imported above.
 
 # How many individual problems a startup validation failure spells out before
 # it stops and reports the remainder as a count.
 MAX_REPORTED_VALIDATION_PROBLEMS = 10
 
-# Per-IP budget in front of Nominatim. geo.py already throttles the outbound
-# call to 1 req/s for the whole process; this stops one caller from consuming
-# that entire budget. In-process only: a multi-worker deployment needs shared
-# state (MIGRATION.md §5.6).
-GEOCODE_RATE_LIMIT_REQUESTS = 10
-GEOCODE_RATE_LIMIT_WINDOW_SECONDS = 60.0
+# The per-IP geocoding budget (GEOCODE_RATE_LIMIT_REQUESTS / _WINDOW_SECONDS)
+# lives in constants.py with every other threshold; it is imported above.
 
 # Hosts whose X-Forwarded-For header may be believed. In the deployment of
 # MIGRATION.md §2 the only client of this service is the Next.js proxy on the
@@ -326,24 +335,30 @@ async def lifespan(app: FastAPI):
     _GEOCODE_RATE_LIMITER.reset()
 
 
-app = FastAPI(
-    title="SAE admission-risk simulation API",
-    version=API_VERSION,
-    lifespan=lifespan,
-)
-
-# Open for now so a separately hosted frontend can call this during
-# development. Phase 7 restricts allow_origins to the deployed frontend's
-# origin (or drops CORS entirely once the Next.js proxy makes it same-origin).
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Routes are declared on this router and mounted by ``create_app`` at the very
+# bottom of the module. The indirection exists so the app can be built more
+# than once in one process — a CORS test needs a second app with a different
+# environment, and reloading this module would swap STATE under the running one.
+router = APIRouter()
 
 
-@app.exception_handler(HTTPException)
+def cors_origins(raw: str | None = None) -> list[str]:
+    """Parse SAE_CORS_ORIGINS (comma-separated) into an allow-list.
+
+    Empty by default, and an empty list means *no CORS middleware at all*: in
+    the deployment of MIGRATION.md §2 the browser only ever calls the Next.js
+    proxy, so every request to this service is same-origin or server-to-server
+    and no CORS header should be minted. Set the variable only when a frontend
+    on another origin must reach this service directly, and then to that exact
+    origin — never ``*``, which would let any page on the internet read a
+    family's simulation from their browser.
+
+    ``raw`` overrides the environment and exists for tests.
+    """
+    value = os.environ.get("SAE_CORS_ORIGINS") if raw is None else raw
+    return [origin.strip() for origin in (value or "").split(",") if origin.strip()]
+
+
 async def envelope_http_exception_handler(request: Request, exc: HTTPException):
     """Serve the v1 error envelope as the bare response body.
 
@@ -361,7 +376,6 @@ async def envelope_http_exception_handler(request: Request, exc: HTTPException):
     return await default_http_exception_handler(request, exc)
 
 
-@app.exception_handler(RequestValidationError)
 async def envelope_validation_exception_handler(
     request: Request,
     exc: RequestValidationError,
@@ -886,12 +900,12 @@ def _reference_order(wishes_df: pd.DataFrame, lang: str) -> pd.DataFrame:
 # Endpoints
 # ---------------------------------------------------------------------------
 
-@app.get("/health")
+@router.get("/health")
 def health() -> dict:
     return {"status": "ok"}
 
 
-@app.get("/meta", response_model=MetaResponse)
+@router.get("/meta", response_model=MetaResponse)
 def get_meta() -> MetaResponse:
     """Everything the frontend would otherwise hard-code."""
     return MetaResponse(
@@ -919,13 +933,13 @@ def get_meta() -> MetaResponse:
     )
 
 
-@app.get("/regions", response_model=list[str])
+@router.get("/regions", response_model=list[str])
 def get_regions() -> list[str]:
     """Superseded by /meta.regions; kept for compatibility."""
     return list(STATE["regions"])
 
 
-@app.get("/programs", response_model=ProgramListResponse)
+@router.get("/programs", response_model=ProgramListResponse)
 def get_programs(
     region: str | None = Query(None, description="Exact region name, as returned by /regions"),
     q: str | None = Query(None, description="Free-text search over school name, commune, and program name"),
@@ -999,7 +1013,7 @@ def get_programs(
     )
 
 
-@app.get("/programs/{program_id}", response_model=ProgramSummary)
+@router.get("/programs/{program_id}", response_model=ProgramSummary)
 def get_program(
     program_id: str,
     lang: str = Depends(request_language),
@@ -1016,7 +1030,7 @@ def get_program(
     return _program_summary(label, STATE["program_mapping"][label])
 
 
-@app.post("/simulate", response_model=SimulationResponse)
+@router.post("/simulate", response_model=SimulationResponse)
 def simulate(
     payload: SimulationRequest,
     lang: str = Depends(request_language),
@@ -1137,7 +1151,7 @@ def _school_name(value: object, lang: str) -> str:
     return text
 
 
-@app.post("/recommend", response_model=RecommendationResponse)
+@router.post("/recommend", response_model=RecommendationResponse)
 def recommend(
     payload: RecommendationRequest,
     lang: str = Depends(request_language),
@@ -1266,7 +1280,7 @@ def recommend(
     )
 
 
-@app.post("/geocode", response_model=GeocodeResponse)
+@router.post("/geocode", response_model=GeocodeResponse)
 def geocode(
     payload: GeocodeRequest,
     request: Request,
@@ -1319,3 +1333,37 @@ def geocode(
         params={},
         message=_t(warning_key, lang) if warning_key else "",
     )
+
+
+# ---------------------------------------------------------------------------
+# Application
+# ---------------------------------------------------------------------------
+
+def create_app() -> FastAPI:
+    """Build the ASGI app: error envelopes, optional CORS, then the routes."""
+    application = FastAPI(
+        title="SAE admission-risk simulation API",
+        version=API_VERSION,
+        lifespan=lifespan,
+    )
+
+    origins = cors_origins()
+    if origins:
+        application.add_middleware(
+            CORSMiddleware,
+            allow_origins=origins,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
+    application.add_exception_handler(
+        HTTPException, envelope_http_exception_handler
+    )
+    application.add_exception_handler(
+        RequestValidationError, envelope_validation_exception_handler
+    )
+    application.include_router(router)
+    return application
+
+
+app = create_app()

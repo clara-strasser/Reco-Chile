@@ -1,24 +1,20 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDownIcon } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 import { StepPage } from "@/components/wizard/step-page";
-import { stepPath } from "@/components/wizard/steps";
+import { stepNumber, stepPath } from "@/components/wizard/steps";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from "@/components/ui/collapsible";
+import { Disclosure } from "@/components/ui/disclosure";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
 import { useRouter } from "@/i18n/navigation";
 import type { RecommendationItem } from "@/lib/api/types";
+import { useMeta } from "@/lib/meta";
 import {
   formatPercent,
   isFiniteNumber,
@@ -53,6 +49,7 @@ export function ImproveStep() {
   const t = useTranslations();
   const locale = useLocale();
   const router = useRouter();
+  const meta = useMeta();
 
   const wishes = useWizardStore((state) => state.wishes);
   const recommendationCount = useWizardStore(
@@ -64,8 +61,8 @@ export function ImproveStep() {
   const appendRecommendations = useWizardStore(
     (state) => state.appendRecommendations,
   );
-  const clearRecommendationsNotice = useWizardStore(
-    (state) => state.clearRecommendationsNotice,
+  const setPendingNavigation = useWizardStore(
+    (state) => state.setPendingNavigation,
   );
 
   const { data, loading, error } = useRecommendations();
@@ -83,39 +80,6 @@ export function ImproveStep() {
     .map((item) => item.program_id)
     .filter((id): id is string => typeof id === "string" && id !== "")
     .filter((id) => selectedIds.has(id));
-
-  /**
-   * Appending is *staged* here and committed as this page unmounts.
-   *
-   * The reason is the step guard. `appendRecommendations` invalidates the
-   * simulation (§4.2), which immediately makes step 4 unreachable; if that
-   * lands while this page is still mounted, `(wizard)/layout.tsx`'s guard
-   * redirects to the furthest step that IS still reachable — step 3, whose
-   * gate only needs a non-empty list — and its `router.replace` overrides the
-   * `router.push` to step 2 that §4.2 asks for. Verified: appending before the
-   * push, or after it in the same handler, both land on `/result`.
-   *
-   * Committing the change in the unmount cleanup means the guard only ever
-   * re-evaluates it against the route the family is actually going to. The
-   * cost is that step 2's `recommendationsAddedNotice` banner reads the store
-   * in a mount-time initializer and is therefore already past by then, so the
-   * count is announced with the toast §4.2 specifies ("navigate to step 2 with
-   * toast") and the store flag is cleared so it cannot resurface on a later
-   * visit to step 2. If the guard is later taught not to hijack a navigation
-   * the wizard itself started, this whole indirection — and the toast — should
-   * go, and the banner takes over again.
-   */
-  const pendingAppend = React.useRef<readonly string[] | null>(null);
-  React.useEffect(
-    () => () => {
-      const ids = pendingAppend.current;
-      pendingAppend.current = null;
-      if (ids === null || ids.length === 0) return;
-      appendRecommendations(ids);
-      clearRecommendationsNotice();
-    },
-    [appendRecommendations, clearRecommendationsNotice],
-  );
 
   function toggle(programId: string, selected: boolean) {
     setSelectedIds((current) => {
@@ -139,12 +103,27 @@ export function ImproveStep() {
       return;
     }
 
-    // §4.2: "navigate to step 2 with toast". The append itself is deferred to
-    // the unmount cleanup above; it invalidates the simulation, which re-locks
-    // step 4 until the family analyses the longer list again.
-    pendingAppend.current = newIds;
+    // `MAX_WISHES` is a hard server cap (§3): a longer list is refused by
+    // `/simulate`, so the ones that do not fit are dropped here — with the same
+    // sentence step 2 shows when the family adds one program too many — instead
+    // of being appended into a list that can no longer be analysed. The store
+    // enforces the same ceiling, so this only decides what the family is *told*.
+    const room = Math.max(0, meta.max_wishes - wishes.length);
+    const accepted = newIds.slice(0, room);
+    if (accepted.length < newIds.length) {
+      toast.warning(t("list.notices.maxWishes", { max: meta.max_wishes }));
+    }
+    if (accepted.length === 0) return;
+
+    // §4.2: append, invalidate, "navigate to step 2". The order matters: the
+    // append invalidates the simulation and instantly locks this step, so the
+    // guard is told where the wizard is going *before* the state that would
+    // make it redirect elsewhere. `ListStep` clears the flag when it mounts and
+    // shows the "N recommended program(s) were added…" banner — the one message
+    // for this event, which is why nothing is toasted here.
+    setPendingNavigation(stepNumber("list"));
+    appendRecommendations(accepted);
     setSelectedIds(new Set());
-    toast.success(t("list.notices.recommendationsAdded", { n: newIds.length }));
     router.push(stepPath("list"));
   }
 
@@ -154,6 +133,13 @@ export function ImproveStep() {
       : null;
   const hasResponse = data !== null;
   const showSkeleton = loading && !hasResponse;
+  // `risk_values_missing` in `ui_recommendations.py`: the candidates were
+  // scored, but not one of them came back with a conditional chance, which is
+  // what the prototype reads as "the portfolio-risk pass did not run". Same
+  // condition (every value blank, over a non-empty table) and the same warning.
+  const riskValuesMissing =
+    items.length > 0 &&
+    items.every((item) => !isFiniteNumber(item.chance_if_considered));
 
   return (
     <StepPage slug="improve">
@@ -173,7 +159,7 @@ export function ImproveStep() {
 
       <ToneAlert tone="info">{t("improve.strategicNote")}</ToneAlert>
 
-      <Disclosure label={t("improve.methodTitle")} testId="improve-method">
+      <Disclosure label={t("improve.methodTitle")} data-testid="improve-method">
         <p className="text-sm">{t("improve.methodBody")}</p>
         <p className="text-sm">{t("improve.methodNote")}</p>
         <p className="text-xs text-muted-foreground">
@@ -189,7 +175,7 @@ export function ImproveStep() {
 
       <Disclosure
         label={t("improve.displaySettings")}
-        testId="improve-display-settings"
+        data-testid="improve-display-settings"
       >
         <div
           role="group"
@@ -206,6 +192,9 @@ export function ImproveStep() {
             </span>
           </div>
           <Slider
+            // The thumb is the control with `role="slider"`; the group label
+            // above names the row, not the input (axe `aria-input-field-name`).
+            aria-label={t("improve.count.label")}
             value={[recommendationCount]}
             min={MIN_RECOMMENDATION_COUNT}
             max={MAX_RECOMMENDATION_COUNT}
@@ -232,8 +221,14 @@ export function ImproveStep() {
         </ToneAlert>
       ) : null}
 
+      {riskValuesMissing ? (
+        <ToneAlert tone="warning" data-testid="portfolio-risk-failed">
+          {t("errors.portfolioRiskFailed")}
+        </ToneAlert>
+      ) : null}
+
       <section className="flex flex-col gap-3">
-        <h3 className="text-base font-semibold">{t("improve.subtitle")}</h3>
+        <h2 className="text-base font-semibold">{t("improve.subtitle")}</h2>
         <p className="text-sm text-muted-foreground">
           {t("improve.selectHint")}
         </p>
@@ -269,7 +264,12 @@ export function ImproveStep() {
       <Button
         type="button"
         size="lg"
-        className="w-full"
+        // The base button style is `whitespace-nowrap`, which is right for a
+        // pill and wrong for the one full-width button in the wizard: at 360 px
+        // "Agregar los programas seleccionados y revisar mi lista" is wider
+        // than the screen, and nowrap spilled it past both edges. Wrapping (and
+        // the auto height that lets it) keeps the label readable instead.
+        className="h-auto w-full py-2 whitespace-normal"
         disabled={selectedVisible.length === 0}
         onClick={handleAdd}
         data-testid="add-recommendations"
@@ -299,33 +299,4 @@ function emptyMessage(
     return t("improve.empty.noneMatched");
   }
   return t("improve.empty.noSimilar");
-}
-
-/** `st.expander` — a labelled disclosure with a chevron. */
-function Disclosure({
-  label,
-  testId,
-  children,
-}: {
-  label: string;
-  testId: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <Collapsible
-      className="rounded-lg border border-border"
-      data-testid={testId}
-    >
-      <CollapsibleTrigger className="group flex w-full items-center justify-between gap-3 rounded-lg px-3 py-2.5 text-left text-sm font-medium focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none">
-        {label}
-        <ChevronDownIcon
-          className="size-4 shrink-0 text-muted-foreground transition-transform group-data-[state=open]:rotate-180"
-          aria-hidden="true"
-        />
-      </CollapsibleTrigger>
-      <CollapsibleContent className="flex flex-col gap-2 px-3 pb-3">
-        {children}
-      </CollapsibleContent>
-    </Collapsible>
-  );
 }

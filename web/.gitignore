@@ -46,6 +46,9 @@ next-env.d.ts
 /test-results/
 /blob-report/
 /playwright/.cache/
+# e2e/responsive.spec.ts writes one screenshot per step per viewport as
+# evidence for the manual side-by-side; they are artefacts, not fixtures.
+/e2e/__screenshots__/
 
 # vitest
 /.vitest/

@@ -11,6 +11,7 @@
  * | any wish add/remove/reorder/group/flag   | simulation invalidated                                         |
  * | a `programId` disappears from the data   | wish dropped (caller shows the toast); simulation invalidated   |
  * | recommendations appended                 | singleton trailing groups (ties) / trailing ranks (strict); inv |
+ * |                                          | ...and never past `maxWishes` when the API's cap is known       |
  *
  * Persistence: only `wishes`, `listExists`, `useEquivalenceClasses`, `filters`
  * go to `sessionStorage`. `studentId`, `simulation` and `home` are memory-only —
@@ -86,6 +87,35 @@ export type WizardState = {
    * it with `clearRecommendationsNotice()` — the port of Streamlit's `pop`.
    */
   recommendationsAddedNotice: number;
+  /**
+   * A navigation the wizard itself started, as the destination's step number —
+   * memory-only, and the one thing that makes the step-4 → step-2 hand-off of
+   * §4.2 possible.
+   *
+   * `appendRecommendations` invalidates the simulation, which instantly makes
+   * step 4 unenterable. Without this flag the step guard in
+   * `components/wizard/step-guard.tsx` reacts to that first and `router.replace`s
+   * to step 3 — the furthest step still reachable — overriding the `router.push`
+   * to step 2 the producer had just issued. While `pendingNavigation` is set the
+   * guard stands down: the wizard is already moving somewhere legal, and the
+   * destination clears the flag when it mounts.
+   *
+   * A step *number* rather than a slug so the store keeps no dependency on the
+   * routing layer; `components/wizard/steps.ts` translates in both directions.
+   */
+  pendingNavigation: WizardStep | null;
+  /**
+   * The current step is waiting on a request it must finish before the family
+   * can move on — the result step's `/simulate` (§4.1 row 3). Memory-only, and
+   * read by the shell to put `WizardNav` in its `pending` state.
+   *
+   * Contract for the owning step: call `setStepBusy(true)` when the request
+   * starts and `setStepBusy(false)` when it settles *and* from the effect's
+   * cleanup, so leaving the step can never strand the spinner. Nothing here
+   * clears it on navigation: effects of the arriving page run before the
+   * shell's, so a shell-side reset would race with the step that just set it.
+   */
+  stepBusy: boolean;
 };
 
 export type WizardActions = {
@@ -112,6 +142,11 @@ export type WizardActions = {
   setMaxWishes: (maxWishes: number | null) => void;
   /** Acknowledge the "N recommendations added" notice (Streamlit's `pop`). */
   clearRecommendationsNotice: () => void;
+  /** Announce a navigation the wizard itself is performing, so the step guard
+   *  does not redirect while it is in flight. `null` cancels/acknowledges it. */
+  setPendingNavigation: (step: WizardStep | null) => void;
+  /** Put the Continue button in its "request in flight" state (§4.1). */
+  setStepBusy: (busy: boolean) => void;
   reset: () => void;
 };
 
@@ -294,6 +329,8 @@ export function initialWizardState(): WizardState {
     recommendationCount: DEFAULT_RECOMMENDATION_COUNT,
     maxWishes: null,
     recommendationsAddedNotice: 0,
+    pendingNavigation: null,
+    stepBusy: false,
   };
 }
 
@@ -436,11 +473,20 @@ export const useWizardStore = create<WizardStore>()(
         const state = get();
         const seen = new Set(state.wishes.map((wish) => wish.programId));
         const added: Wish[] = [];
+        // `/meta.max_wishes` is a hard server cap (`MAX_WISHES`, §3): a list
+        // built past it is rejected by `/simulate`, so appending past it would
+        // hand the family a list they cannot analyse. When the limit is unknown
+        // there is nothing to enforce and the server's 422 stays the only gate.
+        const room =
+          state.maxWishes === null
+            ? Number.POSITIVE_INFINITY
+            : Math.max(0, state.maxWishes - state.wishes.length);
         // Each appended recommendation gets its OWN group in ties mode: a
         // multi-select is not a statement that the programs are tied
         // (`make_appended_recommendation_rows`).
         let group = nextEquivalenceGroup(state.wishes);
         for (const programId of programIds) {
+          if (added.length >= room) break;
           const id = programId.trim();
           if (id === "" || seen.has(id)) continue;
           seen.add(id);
@@ -490,6 +536,16 @@ export const useWizardStore = create<WizardStore>()(
         set({ recommendationsAddedNotice: 0 });
       },
 
+      setPendingNavigation: (step) => {
+        if (get().pendingNavigation === step) return;
+        set({ pendingNavigation: step });
+      },
+
+      setStepBusy: (busy) => {
+        if (get().stepBusy === busy) return;
+        set({ stepBusy: busy });
+      },
+
       reset: () => {
         set(initialWizardState());
       },
@@ -498,10 +554,11 @@ export const useWizardStore = create<WizardStore>()(
       name: WIZARD_PERSIST_KEY,
       version: WIZARD_PERSIST_VERSION,
       storage: createJSONStorage(() => wizardSessionStorage),
-      // NEVER add studentId, simulation or home here (§4.5). `maxWishes` and
-      // `recommendationsAddedNotice` stay out too: the first is a fact about
-      // the live API, the second a one-shot notice that must not survive a
-      // reload.
+      // NEVER add studentId, simulation or home here (§4.5). `maxWishes`,
+      // `recommendationsAddedNotice`, `pendingNavigation` and `stepBusy` stay
+      // out too: the first is a fact about the live API, the others are
+      // in-flight UI state that must not survive a reload — a persisted
+      // `pendingNavigation` would silently disable the step guard.
       partialize: (state): PersistedWizardState => ({
         wishes: state.wishes,
         listExists: state.listExists,

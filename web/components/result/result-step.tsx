@@ -10,9 +10,14 @@
  *   -> ties mode:   sensitivity verdict, per-order view, reference + technical
  *      strict mode: family table, chance popover, detailed calculation
  *
- * Which branch is shown follows the response, not the store: the API attaches
- * `equivalence_sensitivity` only when the list really produces more than one
- * compatible strict order, which is the same condition `app.py` uses.
+ * Which branch is shown follows the *mode the family chose*, exactly as
+ * `app.py` does: it stores `mode: "equivalence"` whenever the ties toggle is
+ * on, so `render_simulation_result` draws the equivalence block even for a
+ * list whose groups happen to be all singletons ("All 1 compatible strict
+ * order(s) lead to: X"). The API cannot say that on its own — it omits
+ * `equivalence_sensitivity` when there is only one compatible order — so the
+ * branch reads the store flag and `equivalenceView` fills the one-order case
+ * in (see `lib/simulation/equivalence.ts`).
  */
 
 import { RotateCcwIcon, TriangleAlertIcon } from "lucide-react";
@@ -22,7 +27,7 @@ import { StepPage } from "@/components/wizard/step-page";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useSimulation } from "@/lib/simulation";
+import { equivalenceView, useSimulation } from "@/lib/simulation";
 import type { SimulationError } from "@/lib/simulation/use-simulation";
 import { useWizardStore } from "@/lib/store/wizard";
 
@@ -35,6 +40,9 @@ export function ResultStep() {
 
   const hasStudentId = useWizardStore((state) => state.studentId.trim() !== "");
   const hasWishes = useWizardStore((state) => state.wishes.length > 0);
+  const useEquivalenceClasses = useWizardStore(
+    (state) => state.useEquivalenceClasses,
+  );
 
   return (
     <StepPage slug="result">
@@ -45,10 +53,10 @@ export function ResultStep() {
       ) : simulation ? (
         <div className="flex flex-col gap-8">
           <ResultSummary simulation={simulation} />
-          {simulation.equivalence_sensitivity ? (
+          {useEquivalenceClasses ? (
             <EquivalenceBlock
               simulation={simulation}
-              sensitivity={simulation.equivalence_sensitivity}
+              sensitivity={equivalenceView(simulation)}
             />
           ) : (
             <FamilyChanceTable simulation={simulation} />

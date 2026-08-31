@@ -11,6 +11,12 @@
  *
  * The table scrolls inside its own container so eight columns never make the
  * page scroll sideways on a phone.
+ *
+ * Grouping follows the prototype column by column: the wish rank is a narrated
+ * count (`{:,}`), while the MTB lottery rank, the seat count and the historical
+ * applicant count are printed bare by `st.dataframe`, so they go through
+ * {@link formatBareInt}. In Spanish a grouped "1.234" would read as 1.234, a
+ * different number entirely.
  */
 
 import { useLocale, useTranslations } from "next-intl";
@@ -24,7 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { SimulationResponse } from "@/lib/api/types";
-import { formatInt, formatPercent } from "@/lib/format";
+import { formatBareInt, formatInt, formatPercent } from "@/lib/format";
 
 import { useResultLabels } from "./labels";
 
@@ -67,14 +73,14 @@ export function DetailTable({
               </TableCell>
               <TableCell>{labels.outcome(wish.program_label)}</TableCell>
               <TableCell className="text-right tabular-nums">
-                {formatInt(wish.lottery_number, locale)}
+                {formatBareInt(wish.lottery_number)}
               </TableCell>
               <TableCell>{labels.tier(wish.priority_tier)}</TableCell>
               <TableCell className="text-right tabular-nums">
-                {formatInt(wish.capacity, locale)}
+                {formatBareInt(wish.capacity)}
               </TableCell>
               <TableCell className="text-right tabular-nums">
-                {formatInt(wish.true_applicants_last_year, locale)}
+                {formatBareInt(wish.true_applicants_last_year)}
               </TableCell>
               <TableCell className="text-right tabular-nums">
                 {formatPercent(wish.availability_probability, locale)}

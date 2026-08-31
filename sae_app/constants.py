@@ -43,6 +43,22 @@ MAX_WISHES = 30
 # final chance by at least 0.5 percentage point, show an intermediate warning.
 EQUIV_PROBABILITY_CHANGE_WARNING_THRESHOLD = 0.005
 
+# ---------------------------------------------------------------------------
+# Geocoding budgets
+# ---------------------------------------------------------------------------
+# Per-IP budget the API keeps in front of Nominatim (api.py). geo.py already
+# throttles the outbound call to 1 req/s for the whole process; this stops one
+# caller from consuming that entire budget. Enforced in-process and per worker,
+# so a multi-worker deployment needs shared state (MIGRATION.md §5.6).
+GEOCODE_RATE_LIMIT_REQUESTS = 10
+GEOCODE_RATE_LIMIT_WINDOW_SECONDS = 60.0
+
+# Geocoding result cache, previously expressed as ``@st.cache_data(ttl=24h)``.
+# One day of reuse keeps repeated wizard steps from re-querying Nominatim, and
+# the size bound keeps a long-lived API process from growing without limit.
+GEOCODING_CACHE_TTL_SECONDS = 24 * 60 * 60
+GEOCODING_CACHE_MAXSIZE = 512
+
 PRIORITIES = [
     "priority_sibling",
     "priority_student",

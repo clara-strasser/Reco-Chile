@@ -136,9 +136,9 @@ export function FilterPanel({ preservedCount, className }: FilterPanelProps) {
       className={className ?? "flex flex-col gap-5"}
     >
       <header className="flex flex-col gap-1">
-        <h3 id="filter-panel-title" className="text-sm font-semibold">
+        <h2 id="filter-panel-title" className="text-sm font-semibold">
           {t("title")}
-        </h3>
+        </h2>
         <p className="text-sm text-pretty text-muted-foreground">
           {t("intro")}
         </p>

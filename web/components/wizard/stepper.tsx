@@ -83,13 +83,20 @@ export function Stepper({ current, canEnter }: StepperProps) {
             </span>
           );
 
+          // A locked step used to be dimmed to `text-muted-foreground/60`,
+          // which is ~2.5:1 on white at 11px — an axe `color-contrast` failure
+          // (serious), and unreadable for exactly the readers who most need the
+          // rail. Locked and unlocked labels therefore share one legible tone;
+          // what separates them is the marker (a grey number in a plain circle
+          // versus a dark one) plus `aria-disabled` and the `steps.locked`
+          // tooltip, none of which depends on being able to see a 40 % grey.
           const text = (
             <span
               className={cn(
                 "text-center text-[0.7rem] leading-tight sm:text-xs",
-                isCurrent && "font-medium text-foreground",
-                !isCurrent && isLink && "text-muted-foreground",
-                !isCurrent && !isLink && "text-muted-foreground/60",
+                isCurrent
+                  ? "font-medium text-foreground"
+                  : "text-muted-foreground",
               )}
             >
               {label}

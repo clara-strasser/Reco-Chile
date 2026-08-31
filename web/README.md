@@ -173,3 +173,53 @@ e2e/                     Playwright specs
 Headings: the step title rendered by `components/wizard/step-page.tsx` is the
 page's single `<h1>`. The application title in the header is a `<p>` brand
 element, because it repeats on every route.
+
+## Docker
+
+`Dockerfile` builds this app in three stages — `deps` (pnpm install from the
+lockfile), `builder` (`pnpm build`), `runner` (Next.js' standalone output) — and
+the runtime image starts `node server.js` on port 3000 with no package manager
+and no sources in it. That is what `output: "standalone"` in `next.config.ts` is
+for; keep it, and keep the `next-intl` plugin wrapped around the config.
+
+The build context is this directory:
+
+```bash
+docker build -t reco-chile-web .
+docker run --rm -p 3000:3000 -e API_BASE_URL=http://host.docker.internal:8000 reco-chile-web
+```
+
+Normally both halves are started together from the repository root, where
+`docker-compose.yml` wires this container to the FastAPI one and sets
+`API_BASE_URL=http://api:8000`:
+
+```bash
+cd .. && docker compose up --build      # http://localhost:3000/es/student
+```
+
+`API_BASE_URL` is read at request time, not baked into the image, so the same
+image runs against any backend origin. Nothing about the Python service reaches
+the browser.
+
+## Continuous integration
+
+`../.github/workflows/ci.yml` runs on every push to `main` / `migration/**` and
+on every pull request. Two of its three jobs are this directory:
+
+| Job   | Commands                                                                                                                                                                                  |
+| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `web` | `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm format:check`, `pnpm exec tsc --noEmit`, `pnpm test --run`, `pnpm build`                                                             |
+| `e2e` | creates `../.venv` from `../requirements-api.txt` (the interpreter `playwright.config.ts` starts uvicorn with), `pnpm exec playwright install --with-deps chromium`, then `CI=1 pnpm e2e` |
+
+Node is the LTS major (22) there, while `.nvmrc` names the version used locally;
+`package.json` requires `>=20` and pnpm comes from its `packageManager` field,
+so CI can never install a different pnpm than you do.
+
+Two details worth knowing before editing the workflow:
+
+- pnpm 11 **swallows** everything after `--`, so flags are forwarded to a script
+  without it (`pnpm test --run`, not `pnpm test -- --run`).
+- Under `CI=1` the Playwright config switches to the `github` reporter,
+  `retries: 2` and `reuseExistingServer: false`; the workflow adds the `html`
+  reporter and uploads `playwright-report/` and `test-results/` when the job
+  fails.

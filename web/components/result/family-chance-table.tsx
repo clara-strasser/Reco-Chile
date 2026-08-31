@@ -11,6 +11,7 @@
 import { InfoIcon } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 
+import { Disclosure } from "@/components/ui/disclosure";
 import {
   Popover,
   PopoverContent,
@@ -29,7 +30,6 @@ import type { SimulationResponse } from "@/lib/api/types";
 import { formatInt, formatPercent } from "@/lib/format";
 
 import { DetailTable } from "./detail-table";
-import { Disclosure } from "./disclosure";
 import { useResultLabels } from "./labels";
 
 export function FamilyChanceTable({
@@ -43,9 +43,9 @@ export function FamilyChanceTable({
 
   return (
     <section className="flex flex-col gap-3" data-testid="family-table-section">
-      <h3 className="text-lg font-semibold tracking-tight">
+      <h2 className="text-lg font-semibold tracking-tight">
         {t("table.title")}
-      </h3>
+      </h2>
       <p className="text-sm text-muted-foreground">{t("detail.note")}</p>
 
       <div className="w-full overflow-x-auto">
@@ -87,7 +87,7 @@ export function FamilyChanceTable({
             <InfoIcon aria-hidden="true" className="size-4" />
             {t("explain.chanceTitle")}
           </PopoverTrigger>
-          <PopoverContent align="start">
+          <PopoverContent align="start" aria-label={t("explain.chanceTitle")}>
             <PopoverDescription>{t("explain.chanceShort")}</PopoverDescription>
           </PopoverContent>
         </Popover>

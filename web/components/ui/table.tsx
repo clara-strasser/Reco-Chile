@@ -6,9 +6,16 @@ import { cn } from "@/lib/utils";
 
 function Table({ className, ...props }: React.ComponentProps<"table">) {
   return (
+    // `tabIndex={0}` is not decoration: a container that scrolls horizontally
+    // is unreachable with a keyboard unless it can hold focus, which is what
+    // axe's `scrollable-region-focusable` (serious) reports. Every wide table
+    // in the wizard — the detailed calculation, the reference order, the
+    // technical variants — narrows to this container on a phone, so the rule
+    // fires on real content rather than in theory.
     <div
       data-slot="table-container"
-      className="relative w-full overflow-x-auto"
+      tabIndex={0}
+      className="relative w-full overflow-x-auto focus-visible:ring-3 focus-visible:ring-ring/50 focus-visible:outline-none"
     >
       <table
         data-slot="table"

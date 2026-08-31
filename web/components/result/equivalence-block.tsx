@@ -14,6 +14,14 @@
  * verdict is not `stable`. Twelve or fewer compatible orders get one card each;
  * above that they are grouped by their most likely outcome, since a family
  * cannot read hundreds of cards.
+ *
+ * The block is rendered for every ties-mode run, including one whose groups are
+ * all singletons: `sensitivity` is then the one-order block synthesized by
+ * `lib/simulation/equivalence.ts`, and the verdict reads "All 1 compatible
+ * strict order(s) lead to: X", exactly as the prototype prints it.
+ *
+ * Both tables that list permutations are paginated (see `./paged-rows`): the
+ * largest list a family can reach is seven tied programs, 5,040 orders.
  */
 
 import type { ReactNode } from "react";
@@ -22,6 +30,7 @@ import { useLocale, useTranslations } from "next-intl";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent } from "@/components/ui/card";
+import { Disclosure } from "@/components/ui/disclosure";
 import {
   Table,
   TableBody,
@@ -38,8 +47,8 @@ import type {
 import { formatInt, formatPercent } from "@/lib/format";
 
 import { DetailTable } from "./detail-table";
-import { Disclosure } from "./disclosure";
 import { useResultLabels, type ResultLabels } from "./labels";
+import { PagedRowsFooter, usePagedRows } from "./paged-rows";
 import { strictOrderLine, tiedGroupLabels, tiedOrderLine } from "./tied-order";
 
 /** Above this many compatible orders the cards become grouped tables. */
@@ -93,9 +102,9 @@ export function EquivalenceBlock({
 
   return (
     <section className="flex flex-col gap-4" data-testid="equivalence-block">
-      <h3 className="text-lg font-semibold tracking-tight">
+      <h2 className="text-lg font-semibold tracking-tight">
         {t("equivalence.question")}
-      </h3>
+      </h2>
 
       <Alert
         data-testid="equivalence-verdict"
@@ -163,7 +172,7 @@ function TiedOrderView({
 
   return (
     <section className="flex flex-col gap-3" data-testid="tied-order-view">
-      <h4 className="text-sm font-semibold">{t("equivalence.ordersTitle")}</h4>
+      <h3 className="text-sm font-semibold">{t("equivalence.ordersTitle")}</h3>
       <p className="text-sm text-muted-foreground">
         {t("equivalence.onlyTiedShown")}
       </p>
@@ -215,9 +224,9 @@ function OrderCard({
   return (
     <Card data-testid="order-card">
       <CardContent className="flex flex-col gap-3">
-        <h5 className="font-semibold">
+        <h4 className="font-semibold">
           {t("equivalence.optionTitle", { number })}
-        </h5>
+        </h4>
         <p className="text-sm font-medium">{t("equivalence.placeInOrder")}</p>
 
         {groups.length === 0 ? (
@@ -290,34 +299,55 @@ function GroupedOrders({
             n: formatInt(rows.length, locale),
           })}
         >
-          <div className="w-full overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>{t("equivalence.orderInside")}</TableHead>
-                  <TableHead className="text-right">
-                    {t("table.predictedOutcomeChance")}
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rows.map((variant) => (
-                  <TableRow key={variant.order_index}>
-                    <TableCell>{tiedOrderLine(variant, labels)}</TableCell>
-                    <TableCell className="text-right tabular-nums">
-                      {formatPercent(
-                        variant.predicted_outcome_final_chance,
-                        locale,
-                      )}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          <GroupedOutcomeTable variants={rows} labels={labels} />
         </Disclosure>
       ))}
     </div>
+  );
+}
+
+/** The orders that share one predicted outcome, paginated like the technical
+ *  table — a single group can hold every one of the 5,040 reachable orders. */
+function GroupedOutcomeTable({
+  variants,
+  labels,
+}: {
+  variants: SimulationVariant[];
+  labels: ResultLabels;
+}) {
+  const t = useTranslations("result");
+  const locale = useLocale();
+  const rows = usePagedRows(variants);
+
+  return (
+    <>
+      <div className="w-full overflow-x-auto">
+        <Table data-testid="grouped-outcome-table">
+          <TableHeader>
+            <TableRow>
+              <TableHead>{t("equivalence.orderInside")}</TableHead>
+              <TableHead className="text-right">
+                {t("table.predictedOutcomeChance")}
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {rows.visible.map((variant) => (
+              <TableRow key={variant.order_index}>
+                <TableCell>{tiedOrderLine(variant, labels)}</TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {formatPercent(
+                    variant.predicted_outcome_final_chance,
+                    locale,
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      <PagedRowsFooter rows={rows} />
+    </>
   );
 }
 
@@ -332,41 +362,50 @@ function TechnicalVariantsTable({
   const t = useTranslations("result");
   const tApp = useTranslations("app");
   const locale = useLocale();
+  const rows = usePagedRows(variants);
 
   return (
-    <div className="w-full overflow-x-auto">
-      <Table data-testid="technical-variants-table">
-        <TableHeader>
-          <TableRow>
-            <TableHead className="text-right">
-              {t("table.strictOrder")}
-            </TableHead>
-            <TableHead>{t("table.predictedOutcome")}</TableHead>
-            <TableHead className="text-right">
-              {t("table.predictedOutcomeChance")}
-            </TableHead>
-            <TableHead>{t("table.flaggedAtRisk")}</TableHead>
-            <TableHead>{t("table.strictOrderFull")}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {variants.map((variant) => (
-            <TableRow key={variant.order_index}>
-              <TableCell className="text-right tabular-nums">
-                {formatInt(variant.order_index, locale)}
-              </TableCell>
-              <TableCell>{labels.outcome(variant.predicted_outcome)}</TableCell>
-              <TableCell className="text-right tabular-nums">
-                {formatPercent(variant.predicted_outcome_final_chance, locale)}
-              </TableCell>
-              <TableCell>
-                {variant.at_risk ? tApp("yes") : tApp("no")}
-              </TableCell>
-              <TableCell>{strictOrderLine(variant, labels)}</TableCell>
+    <>
+      <div className="w-full overflow-x-auto">
+        <Table data-testid="technical-variants-table">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="text-right">
+                {t("table.strictOrder")}
+              </TableHead>
+              <TableHead>{t("table.predictedOutcome")}</TableHead>
+              <TableHead className="text-right">
+                {t("table.predictedOutcomeChance")}
+              </TableHead>
+              <TableHead>{t("table.flaggedAtRisk")}</TableHead>
+              <TableHead>{t("table.strictOrderFull")}</TableHead>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+          </TableHeader>
+          <TableBody>
+            {rows.visible.map((variant) => (
+              <TableRow key={variant.order_index}>
+                <TableCell className="text-right tabular-nums">
+                  {formatInt(variant.order_index, locale)}
+                </TableCell>
+                <TableCell>
+                  {labels.outcome(variant.predicted_outcome)}
+                </TableCell>
+                <TableCell className="text-right tabular-nums">
+                  {formatPercent(
+                    variant.predicted_outcome_final_chance,
+                    locale,
+                  )}
+                </TableCell>
+                <TableCell>
+                  {variant.at_risk ? tApp("yes") : tApp("no")}
+                </TableCell>
+                <TableCell>{strictOrderLine(variant, labels)}</TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+      <PagedRowsFooter rows={rows} />
+    </>
   );
 }

@@ -61,6 +61,10 @@
     "note": "The final chance accounts for every program placed above each preference.",
     "technicalNote": "MTB ranks, priority tiers, seats and historical applicant counts are calculation details. They should not be interpreted as official SAE results."
   },
+  "pagination": {
+    "showing": "Showing {shown} of {total}",
+    "showMore": "Show more"
+  },
   "errors": {
     "title": "We could not calculate the result",
     "retry": "Calculate again"

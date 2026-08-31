@@ -321,14 +321,16 @@ test.describe("improve step — feeding recommendations back into the list", () 
     await submit.click();
     await page.waitForURL("**/es/list");
 
-    // §4.2: "navigate to step 2 with toast". Step 2 also has a banner fed by
-    // the store's `recommendationsAddedNotice`, but it reads that flag in a
-    // mount-time initializer, and the append has to be committed *after* this
-    // page unmounts or the step guard hijacks the navigation — see the comment
-    // on `pendingAppend` in `components/improve/improve-step.tsx`.
-    await expect(
-      page.getByText(fill(es.list.notices.recommendationsAdded, { n: "2" })),
-    ).toBeVisible();
+    // §4.2: appended, invalidated, and landed on step 2 with the success
+    // notice. The banner is the message — one message, not a banner and a toast
+    // — and it renders because the improve step announces the navigation
+    // through the store's `pendingNavigation` before it invalidates the
+    // simulation, so the step guard no longer redirects to step 3 mid-push.
+    const added = page.getByTestId("recommendations-added");
+    await expect(added).toBeVisible();
+    await expect(added).toHaveText(
+      fill(es.list.notices.recommendationsAdded, { n: "2" }),
+    );
 
     const wishCards = page.getByTestId("wish-card");
     await expect(wishCards).toHaveCount(LIST.inputs.wishes.length + 2);
@@ -361,5 +363,16 @@ test.describe("improve step — feeding recommendations back into the list", () 
     ).toHaveCount(0);
 
     expect(calls.count).toBe(0);
+
+    // Streamlit's `pop`: the notice is shown once. Leaving step 2 and coming
+    // back must not resurface it.
+    await page.getByTestId("wizard-back").click();
+    await page.waitForURL("**/es/student");
+    await page.getByTestId("wizard-continue").click();
+    await page.waitForURL("**/es/list");
+    await expect(page.getByTestId("wish-card")).toHaveCount(
+      LIST.inputs.wishes.length + 2,
+    );
+    await expect(page.getByTestId("recommendations-added")).toHaveCount(0);
   });
 });

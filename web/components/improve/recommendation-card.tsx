@@ -19,9 +19,9 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import type { RecommendationItem } from "@/lib/api/types";
+import { formatBareInt } from "@/lib/format";
 import {
   formatDistanceKm,
-  formatInt,
   formatPercent,
   formatRatio,
   isFiniteNumber,
@@ -41,6 +41,12 @@ import { riskLevelTone, ToneAlert } from "./tone-alert";
  * The optional lines are dropped rather than dashed when their value is
  * missing, matching the prototype's `if distance != "" and not pd.isna(...)` /
  * `if np.isfinite(current) and projected_risk` guards.
+ *
+ * Capacity and the estimated MTB rank use {@link formatBareInt}, not the
+ * grouped `formatInt`: `ui_common.format_display_table` renders both with
+ * `f"{int(round(float(x)))}"`, and a grouped "1.234" would read as 1.234 in
+ * Spanish, where "." is the decimal separator's counterpart. The applicants-per-
+ * seat ratio keeps its locale decimal comma, because that one *is* a decimal.
  */
 export function RecommendationCard({
   item,
@@ -130,13 +136,17 @@ export function RecommendationCard({
               {t("improve.card.calcTrigger")}
             </Button>
           </PopoverTrigger>
-          <PopoverContent align="start" className="w-80">
+          <PopoverContent
+            align="start"
+            className="w-80"
+            aria-label={t("improve.card.calcTrigger")}
+          >
             <dl className="flex flex-col gap-1.5">
               <Detail
                 label={t("improve.card.capacity")}
                 value={
                   isFiniteNumber(item.capacity)
-                    ? formatInt(item.capacity, locale)
+                    ? formatBareInt(item.capacity)
                     : noInformation
                 }
               />
@@ -150,7 +160,7 @@ export function RecommendationCard({
                 label={t("improve.card.estimatedMtbRank")}
                 value={
                   isFiniteNumber(item.estimated_mtb_rank)
-                    ? formatInt(item.estimated_mtb_rank, locale)
+                    ? formatBareInt(item.estimated_mtb_rank)
                     : noInformation
                 }
               />

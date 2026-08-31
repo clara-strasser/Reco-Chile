@@ -25,6 +25,7 @@ import {
 import { useLocale, useTranslations } from "next-intl";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Disclosure } from "@/components/ui/disclosure";
 import {
   Popover,
   PopoverContent,
@@ -36,7 +37,6 @@ import { formatPercent } from "@/lib/format";
 import { useMeta } from "@/lib/meta";
 import { cn } from "@/lib/utils";
 
-import { Disclosure } from "./disclosure";
 import { useResultLabels } from "./labels";
 
 /** How many outcomes the podium shows before the "show all" disclosure. */
@@ -87,7 +87,7 @@ export function ResultSummary({
 
   return (
     <section className="flex flex-col gap-4" data-testid="result-summary">
-      <h3 className="text-lg font-semibold tracking-tight">{t("heading")}</h3>
+      <h2 className="text-lg font-semibold tracking-tight">{t("heading")}</h2>
 
       {/* `st.metric`: the label above, the number as the one big figure. */}
       <div className="flex flex-col gap-1 rounded-lg border border-border p-4">
@@ -114,7 +114,7 @@ export function ResultSummary({
       </p>
 
       <div className="flex flex-col gap-2">
-        <h4 className="text-sm font-semibold">{t("outcomes.title")}</h4>
+        <h3 className="text-sm font-semibold">{t("outcomes.title")}</h3>
         <ol
           className="flex flex-col gap-1 text-sm"
           data-testid="outcome-podium"
@@ -166,7 +166,10 @@ export function ResultSummary({
             <InfoIcon aria-hidden="true" className="size-4" />
             {t("explain.percentagesTitle")}
           </PopoverTrigger>
-          <PopoverContent align="start">
+          <PopoverContent
+            align="start"
+            aria-label={t("explain.percentagesTitle")}
+          >
             <PopoverDescription>{t("attention.ordering")}</PopoverDescription>
             <PopoverDescription>
               {t("explain.finalChanceNote")}

@@ -36,6 +36,9 @@ export function WhyWeAsk() {
       <PopoverContent
         align="start"
         className="w-80"
+        // Radix gives the panel `role="dialog"`, which has to carry a name of
+        // its own — the trigger's text is not one (axe `aria-dialog-name`).
+        aria-label={t("title")}
         data-testid="student-why-content"
       >
         <PopoverHeader>

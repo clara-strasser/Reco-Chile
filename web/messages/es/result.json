@@ -61,6 +61,10 @@
     "note": "La probabilidad final considera todos los programas ubicados por encima de cada preferencia.",
     "technicalNote": "Los rankings MTB, niveles de prioridad, cupos y cantidades históricas de postulantes son detalles del cálculo. No deben interpretarse como resultados oficiales del SAE."
   },
+  "pagination": {
+    "showing": "Mostrando {shown} de {total}",
+    "showMore": "Mostrar más"
+  },
   "errors": {
     "title": "No pudimos calcular el resultado",
     "retry": "Volver a calcular"

@@ -364,7 +364,7 @@ test.describe("step 2 — build and order the list", () => {
     await page.waitForURL("**/es/list");
     await expect(page.getByTestId("filter-panel")).toBeVisible();
     await expect(page.getByTestId("list-caption")).toHaveText(
-      copy("es", "list.filters.intro"),
+      copy("es", "filters.intro"),
     );
 
     // "Yes — review my list": no filter panel, and the order reminder instead.

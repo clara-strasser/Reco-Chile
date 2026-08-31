@@ -22,6 +22,8 @@ from sae_app.cache import memoize_bytes, ttl_memoize
 from sae_app.constants import (
     CHILE_COORDINATE_ZONES,
     COMMUNE_COORDINATES_PATH,
+    GEOCODING_CACHE_MAXSIZE,
+    GEOCODING_CACHE_TTL_SECONDS,
     GEOCODING_TIMEOUT_SECONDS,
     GEOCODING_USER_AGENT,
     NOMINATIM_MIN_INTERVAL_SECONDS,
@@ -268,11 +270,8 @@ def normalize_address_for_geocoding(address: str) -> str:
 
 GEOCODING_RESULT_LIMIT = 10
 
-# Geocoding cache policy, previously expressed as ``@st.cache_data(ttl=24h)``.
-# One day of reuse keeps repeated wizard steps from re-querying Nominatim,
-# and the bound keeps a long-lived API process from growing without limit.
-GEOCODING_CACHE_TTL_SECONDS = 24 * 60 * 60
-GEOCODING_CACHE_MAXSIZE = 512
+# The geocoding cache policy (TTL and size bound) lives in constants.py with
+# every other threshold; it is imported above.
 
 ADDRESS_LEVEL_ADDRESSTYPES = {
     "house",

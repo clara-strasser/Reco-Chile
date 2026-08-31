@@ -335,6 +335,51 @@ describe("invalidation table §4.2 — appended recommendations", () => {
     expectInvalidated();
   });
 
+  it("never appends past /meta.max_wishes once the cap is known", () => {
+    seed(); // three wishes
+    store().setMaxWishes(4);
+
+    store().appendRecommendations(["2001:R", "2002:S", "2003:T"]);
+    expect(store().wishes.map((wish) => wish.programId)).toEqual([
+      "1001:A",
+      "1002:B",
+      "1003:C",
+      "2001:R",
+    ]);
+    // The notice counts what was actually added, not what was offered.
+    expect(store().recommendationsAddedNotice).toBe(1);
+    // The list is exactly at the cap, so it is still analysable.
+    expect(isWishListValid(store())).toBe(true);
+
+    // Full: a further append changes nothing at all, notice included.
+    store().setSimulation(SIMULATION);
+    store().appendRecommendations(["2002:S"]);
+    expect(store().wishes).toHaveLength(4);
+    expect(store().recommendationsAddedNotice).toBe(1);
+    expect(store().simulation).toBe(SIMULATION);
+  });
+
+  it("appends without a ceiling while the cap is unknown", () => {
+    seed();
+    expect(store().maxWishes).toBeNull();
+    store().appendRecommendations(["2001:R", "2002:S", "2003:T"]);
+    expect(store().wishes).toHaveLength(6);
+  });
+
+  it("counts duplicates against nothing: only new ids use up the budget", () => {
+    seed();
+    store().setMaxWishes(4);
+    // "1001:A" is already in the list, so it neither is appended nor consumes
+    // the single remaining slot.
+    store().appendRecommendations(["1001:A", "2001:R"]);
+    expect(store().wishes.map((wish) => wish.programId)).toEqual([
+      "1001:A",
+      "1002:B",
+      "1003:C",
+      "2001:R",
+    ]);
+  });
+
   it("ignores duplicates and empty ids, and is a no-op when nothing is new", () => {
     seed({ ties: true });
     store().appendRecommendations(["1001:A", " ", "2001:R", "2001:R"]);
@@ -593,6 +638,48 @@ describe("§4.2 — the recommendations-added notice", () => {
   });
 });
 
+describe("the wizard's own navigations and the busy flag", () => {
+  it("starts idle and survives nothing but a reset", () => {
+    expect(store().pendingNavigation).toBeNull();
+    expect(store().stepBusy).toBe(false);
+
+    store().setPendingNavigation(2);
+    store().setStepBusy(true);
+    expect(store().pendingNavigation).toBe(2);
+    expect(store().stepBusy).toBe(true);
+
+    store().reset();
+    expect(store().pendingNavigation).toBeNull();
+    expect(store().stepBusy).toBe(false);
+  });
+
+  it("is idempotent, so a re-render cannot loop against it", () => {
+    store().setPendingNavigation(2);
+    const before = store();
+    store().setPendingNavigation(2);
+    expect(store()).toBe(before);
+
+    store().setStepBusy(false);
+    const idle = store();
+    store().setStepBusy(false);
+    expect(store()).toBe(idle);
+  });
+
+  it("survives the append it exists to protect", () => {
+    // The step-4 hand-off: announce the destination, THEN invalidate. The flag
+    // must still be set afterwards or the guard redirects mid-navigation.
+    seed();
+    store().setPendingNavigation(2);
+    store().appendRecommendations(["2001:R"]);
+    expect(store().pendingNavigation).toBe(2);
+    expectInvalidated();
+
+    // The destination acknowledges it on mount.
+    store().setPendingNavigation(null);
+    expect(store().pendingNavigation).toBeNull();
+  });
+});
+
 describe("§4.1 — the /meta.max_wishes gate on step 2", () => {
   const fill = (n: number) => {
     store().setStudentId(VALID_RUN);
@@ -702,14 +789,20 @@ describe("sessionStorage persistence §4.2", () => {
     expect(snapshot.state).not.toHaveProperty("recommendationCount");
   });
 
-  it("never writes the API limit or the one-shot recommendation notice", () => {
+  it("never writes the API limit, the one-shot notice or the in-flight UI state", () => {
     seed();
     store().setMaxWishes(30);
     store().appendRecommendations(["2001:R"]);
+    store().setPendingNavigation(2);
+    store().setStepBusy(true);
 
     const snapshot = persisted();
     expect(snapshot.state).not.toHaveProperty("maxWishes");
     expect(snapshot.state).not.toHaveProperty("recommendationsAddedNotice");
+    // A persisted `pendingNavigation` would silently switch the step guard off
+    // for the whole of the next tab session.
+    expect(snapshot.state).not.toHaveProperty("pendingNavigation");
+    expect(snapshot.state).not.toHaveProperty("stepBusy");
   });
 
   it("rehydrates the list into a fresh module instance, without the secrets", async () => {

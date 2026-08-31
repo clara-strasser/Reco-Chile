@@ -76,7 +76,12 @@ export function fixedHalfEven(value: number, digits: number): string {
 
   // Beyond 2^53 every double is an integer and `toFixed` switches to
   // exponential notation past 1e21; no rounding decision is left to make.
-  if (abs >= 1e15) return abs.toFixed(digits);
+  // The sign still has to be put back — nothing here can be a negative zero,
+  // since `abs` is at least 1e15.
+  if (abs >= 1e15) {
+    const body = abs.toFixed(digits);
+    return negative ? `-${body}` : body;
+  }
 
   const expansion = abs.toFixed(digits + GUARD_DIGITS);
   const point = expansion.indexOf(".");
@@ -165,4 +170,27 @@ export function formatInt(
     separators(locale).group,
   );
   return negative ? `-${body}` : body;
+}
+
+/**
+ * An integer with **no** thousands separator — Python's plain `f"{value}"`.
+ *
+ * The prototype prints two different kinds of integer and only groups one of
+ * them. Counts it narrates in a sentence go through `{n:,}` ("10,000 compatible
+ * strict orders"); identifiers and quantities inside a table do not — the MTB
+ * lottery rank, the seat count and the historical applicant count are printed
+ * by `st.dataframe` as bare numbers, and `ui_common.format_display_table`
+ * renders Capacity and Estimated MTB rank with `f"{int(round(float(x)))}"`.
+ * A grouped "1.234" for a lottery rank would read as a different number in
+ * Spanish, where "." is the group separator, so the distinction matters.
+ *
+ * Rounding is the same half-to-even rule as everywhere else, so a float that
+ * arrives here (a rank the engine averaged, say) becomes the integer CPython's
+ * `round()` would produce.
+ */
+export function formatBareInt(value: number | null | undefined): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    return MISSING_NUMBER;
+  }
+  return fixedHalfEven(value, 0);
 }

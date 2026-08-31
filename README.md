@@ -258,6 +258,64 @@ The main dependencies are Streamlit, pandas, NumPy, and SciPy.
 > may differ. Pin exact versions with `pip freeze > requirements.txt` when you
 > need a reproducible environment for analysis.
 
+### Frontend (`web/`)
+
+A Next.js interface is replacing the Streamlit prototype (see `MIGRATION.md`).
+It computes nothing itself: every number comes from the same `sae_app/` engine,
+served by the FastAPI adapter `api.py`.
+
+Requirements: **Node ≥ 20 LTS** (the major used for development is in
+`web/.nvmrc`) and **pnpm**, whose version is pinned in `web/package.json`
+(`packageManager`); `corepack enable` installs exactly that one.
+
+Two processes, in two terminals:
+
+```bash
+python -m pip install -r requirements-api.txt   # FastAPI only, no Streamlit
+python -m uvicorn api:app --reload               # http://localhost:8000
+```
+
+```bash
+cd web
+pnpm install
+pnpm dev                                         # http://localhost:3000/es/student
+```
+
+The browser only ever talks to the Next.js origin: `web/app/api/[...path]/`
+proxies to `API_BASE_URL` (default `http://localhost:8000`) server-side, so the
+Python port never has to be published and there is no CORS to configure.
+
+See [`web/README.md`](web/README.md) for the frontend's own commands (tests,
+Playwright, regenerating the typed API client).
+
+## Run with Docker
+
+Two containers — the FastAPI service and the Next.js server — described by
+`docker-compose.yml`:
+
+```bash
+docker compose up --build       # http://localhost:3000/es/student
+docker compose down
+```
+
+- `Dockerfile.api` (`python:3.12-slim`) installs `requirements-api.txt`, copies
+  `api.py`, `sae_app/` and `data/`, and runs `uvicorn` with **one worker**: the
+  Nominatim throttle and the per-IP geocode limit are per process, so a second
+  worker would double the outbound request rate.
+- `web/Dockerfile` builds the frontend in three stages and ships Next.js'
+  standalone output, started with `node server.js` on port 3000 with
+  `API_BASE_URL=http://api:8000`.
+- Only the web service publishes a port; the API is reachable inside the compose
+  network only. The Streamlit prototype is not containerized.
+- `TRUST_PROXY` (web) and `SAE_TRUSTED_PROXIES` (api) stay unset in this setup,
+  so no `X-Forwarded-For` header is believed and the per-IP geocoding budget
+  becomes one shared bucket. That is stricter than per browser, never looser;
+  set both only behind a reverse proxy that rewrites the header itself.
+
+Continuous integration runs the same checks — `pytest`, the Streamlit-free
+import check, `pnpm lint`/`format:check`/`tsc`/`test`/`build`, and Playwright —
+in `.github/workflows/ci.yml`.
+
 ## Data files
 
 The application expects a `data/` directory next to `app.py`.
@@ -284,11 +342,24 @@ At startup, the app checks required columns, core numeric fields, positive lotte
 ```text
 Reco-Chile/
 ├── app.py                         # Streamlit entry point and page orchestration
-├── requirements.txt
+├── api.py                         # FastAPI adapter over the same engine
+├── requirements.txt               # Streamlit prototype (engine included)
+├── requirements-api.txt           # FastAPI service only, without Streamlit
+├── requirements-dev.txt           # pytest, httpx
+├── Dockerfile.api                 # Container image for the FastAPI service
+├── docker-compose.yml             # api + web
 ├── README.md
+├── MIGRATION.md                   # Streamlit → Next.js plan and API contract
+├── .github/workflows/ci.yml       # Python, web, and end-to-end checks
 ├── data/                          # Calibration and program metadata
+├── scripts/
+│   └── export_openapi.py          # Writes web/lib/api/openapi.json
+├── tests/                         # pytest: engine goldens and API contract
+│   └── fixtures/golden/           # Frozen pre-migration engine outputs
+├── web/                           # Next.js frontend (see web/README.md)
 └── sae_app/
     ├── __init__.py                # Package overview
+    ├── cache.py                   # In-process caches used outside Streamlit
     ├── constants.py               # Columns, thresholds, paths, and configuration
     ├── data_loading.py            # CSV loading, joins, translation, and validation
     ├── geo.py                     # Coordinates, distance, and Nominatim geocoding

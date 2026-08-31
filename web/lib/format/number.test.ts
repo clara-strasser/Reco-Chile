@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   fixedHalfEven,
+  formatBareInt,
   formatInt,
   formatPercent,
   MISSING_NUMBER,
@@ -90,6 +91,15 @@ describe("fixedHalfEven", () => {
     expect(fixedHalfEven(-0.001, 1)).toBe("0.0");
     expect(fixedHalfEven(-1.25, 1)).toBe("-1.2");
   });
+
+  it("keeps the sign above the 1e15 short circuit", () => {
+    // Past 1e15 there is no rounding decision left, but the sign still has to
+    // survive — the branch used to return the absolute value.
+    //   .venv/bin/python -c "print(format(-1e15, '.0f'))" -> -1000000000000000
+    expect(fixedHalfEven(-1e15, 0)).toBe("-1000000000000000");
+    expect(fixedHalfEven(-2.5e15, 1)).toBe("-2500000000000000.0");
+    expect(fixedHalfEven(1e15, 0)).toBe("1000000000000000");
+  });
 });
 
 describe("formatPercent", () => {
@@ -136,6 +146,44 @@ describe("formatInt", () => {
   it("renders a missing value as a dash", () => {
     expect(formatInt(null, "en")).toBe(MISSING_NUMBER);
     expect(formatInt(Number.NaN, "es")).toBe(MISSING_NUMBER);
+  });
+});
+
+describe("formatBareInt", () => {
+  /**
+   * The counterpart of `formatInt`: Python's plain `f"{value}"`, which the
+   * prototype uses for every integer printed inside a table (seats, applicants,
+   * the MTB lottery rank, and `format_display_table`'s Capacity / Estimated MTB
+   * rank). No separator, and therefore no locale.
+   */
+  it("never groups thousands, in either language", () => {
+    expect(formatBareInt(1234)).toBe("1234");
+    expect(formatBareInt(10000)).toBe("10000");
+    // The exact trap in Spanish: `formatInt` prints "1.234", which a family
+    // reads as 1.234 — a different lottery rank.
+    expect(formatInt(1234, "es")).toBe("1.234");
+    expect(formatBareInt(45)).toBe("45");
+    expect(formatBareInt(0)).toBe("0");
+    expect(formatBareInt(-7)).toBe("-7");
+  });
+
+  it("rounds a float half to even, like `int(round(x))`", () => {
+    expect(formatBareInt(1.5)).toBe("2");
+    expect(formatBareInt(2.5)).toBe("2");
+    expect(formatBareInt(0.5)).toBe("0");
+    expect(formatBareInt(-1.5)).toBe("-2");
+    expect(formatBareInt(12.4)).toBe("12");
+  });
+
+  it("renders a missing value as a dash", () => {
+    for (const value of [
+      null,
+      undefined,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+    ]) {
+      expect(formatBareInt(value)).toBe(MISSING_NUMBER);
+    }
   });
 });
 

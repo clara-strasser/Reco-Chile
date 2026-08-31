@@ -112,7 +112,9 @@ export function StudentIdField() {
           // token, hence a raw palette colour; the green/orange/red of the
           // *risk* badges is a different scale and comes from `/meta`
           // thresholds in Phase 4 (MIGRATION.md §4.4).
-          state === "valid" && "text-emerald-600 dark:text-emerald-400",
+          // emerald-700, not -600: #009966 on white is 3.7:1, below the 4.5:1
+          // AA floor for this 14px line (axe `color-contrast`, serious).
+          state === "valid" && "text-emerald-700 dark:text-emerald-400",
           state === "invalid" && "text-destructive",
           state === "empty" && "text-muted-foreground",
         )}

@@ -5,7 +5,7 @@ import * as React from "react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import type { Meta } from "@/lib/api/types";
 import { MetaProvider } from "@/lib/meta";
-import { hydrateWizardStore } from "@/lib/store/wizard";
+import { hydrateWizardStore, useWizardStore } from "@/lib/store/wizard";
 
 import { StepGuard } from "./step-guard";
 import { Stepper } from "./stepper";
@@ -58,15 +58,22 @@ function WizardShellInner({ children }: { children: React.ReactNode }) {
   const { slug, allowed, fallbackSlug, canEnter, canContinue } =
     useWizardGating();
 
+  // `WizardNav.pending` is owned by whichever step has a request in flight; the
+  // shell only forwards it. The result step is the one that has one today
+  // (`/simulate`, §4.1 row 3) and sets the flag through `setStepBusy` — see the
+  // contract on `stepBusy` in the store. Nothing else sets it, so the spinner
+  // simply never appears until it does.
+  const stepBusy = useWizardStore((state) => state.stepBusy);
+
   return (
     <div className="flex min-h-full flex-col">
       <Stepper current={slug} canEnter={canEnter} />
       <div className="flex-1 pt-8">
-        <StepGuard allowed={allowed} fallbackSlug={fallbackSlug}>
+        <StepGuard slug={slug} allowed={allowed} fallbackSlug={fallbackSlug}>
           {children}
         </StepGuard>
       </div>
-      <WizardNav slug={slug} canContinue={canContinue} />
+      <WizardNav slug={slug} canContinue={canContinue} pending={stepBusy} />
     </div>
   );
 }

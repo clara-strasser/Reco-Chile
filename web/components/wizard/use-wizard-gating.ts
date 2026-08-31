@@ -21,8 +21,8 @@ import {
  * Binds the store's step gates (MIGRATION.md §4.1) to the current route.
  *
  * The rules themselves live in `@/lib/store/wizard`; this hook only decides
- * *which* step the URL is on, supplies `/meta.max_exact_equiv_permutations` as
- * the order-count limit, and re-exposes the gates as plain booleans so every
+ * *which* step the URL is on, supplies `/meta.max_exact_equiv_permutations` and
+ * `/meta.max_wishes` as the two server limits, and re-exposes the gates as plain booleans so every
  * component below takes props instead of touching the store.
  *
  * Each gate is a separate primitive subscription, so the shell re-renders only
@@ -44,8 +44,13 @@ export function useWizardGating(): WizardGating {
   const meta = useMetaOptional();
 
   const slug = stepFromPathname(pathname ?? "") ?? "student";
+  // Both server caps of §3, straight from `/meta`, so every gate the shell
+  // draws — the stepper links, Continue, and the guard's fallback — uses the
+  // numbers the API will enforce, and does so from the first render rather than
+  // waiting for some step to have called `setMaxWishes`.
   const options: StepGateOptions = {
     maxOrders: meta?.max_exact_equiv_permutations ?? null,
+    maxWishes: meta?.max_wishes ?? null,
   };
 
   // Step 1 is always enterable (§4.1), so only 2–4 need a subscription.

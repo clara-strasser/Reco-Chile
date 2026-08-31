@@ -33,6 +33,7 @@ import { OrderCount } from "@/components/list/order-count";
 import { ProgramSearch } from "@/components/list/program-search";
 import { WishList } from "@/components/list/wish-list";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { StepPage } from "@/components/wizard/step-page";
 import { useMeta } from "@/lib/meta";
 import { usePrograms } from "@/lib/programs";
 import { useWizardStore } from "@/lib/store/wizard";
@@ -58,6 +59,17 @@ export function ListStep() {
   const clearRecommendationsNotice = useWizardStore(
     (state) => state.clearRecommendationsNotice,
   );
+  const setPendingNavigation = useWizardStore(
+    (state) => state.setPendingNavigation,
+  );
+
+  // Arriving here ends the hand-off step 4 started: it set `pendingNavigation`
+  // to this step so the step guard would not `router.replace` away while the
+  // append was invalidating the simulation (see `components/wizard/step-guard.tsx`).
+  // Clearing it on mount hands the guard back its normal authority.
+  React.useEffect(() => {
+    setPendingNavigation(null);
+  }, [setPendingNavigation]);
 
   // One source for the length gate: the store applies it to `isWishListValid`,
   // which is what both the Continue button and the stepper read.
@@ -98,10 +110,10 @@ export function ListStep() {
   // Streamlit's `st.session_state.pop(...)`: shown once, then cleared, so the
   // message cannot reappear on a later visit. It is mirrored into local state —
   // adjusted during render, never in an effect — because clearing the store
-  // must not take the notice off the screen again. The value can arrive *after*
-  // this component mounts: step 4 commits its append in an unmount cleanup,
-  // which React runs after the new route has rendered, so reading the store
-  // once at mount would miss it.
+  // must not take the notice off the screen again. Step 4 appends *before* it
+  // navigates, so the count is already in the store at mount; latching any
+  // later change too costs one comparison and keeps the banner correct if a
+  // second producer ever appears.
   const [addedNotice, setAddedNotice] = React.useState(recommendationsAdded);
   const [seenNotice, setSeenNotice] = React.useState(recommendationsAdded);
   if (recommendationsAdded !== seenNotice) {
@@ -131,30 +143,22 @@ export function ListStep() {
   const needsBuilder = listExists === false;
 
   return (
-    <section className="flex flex-col gap-6" data-testid="step-list">
-      <header className="flex flex-col gap-2">
-        {/* Same frame as `components/wizard/step-page.tsx` — the step title is
-            the page's single `<h1>` — but written out here because the lead
-            sentence of this step is the one that depends on the mode, which
-            `StepPage`'s static `STEP_LEAD_KEY` cannot express. */}
-        <h1 className="text-xl font-semibold tracking-tight text-balance">
-          {t("list.title")}
-        </h1>
-        {/* The prototype prints a different caption per branch: the filter
-            intro when it is helping to build the list, the preference-order
-            reminder when the family already has one. */}
-        <p
-          className="text-sm text-pretty text-muted-foreground"
-          data-testid="list-caption"
-        >
-          {needsBuilder
-            ? t("list.filters.intro")
-            : t("list.order.preferenceHint")}
-        </p>
-      </header>
-
+    // The prototype prints a different caption per branch: the filter intro
+    // when it is helping to build the list, the preference-order reminder when
+    // the family already has one. That is the whole reason `StepPage` takes a
+    // `lead` — this step used to duplicate the frame to say it, and then did
+    // not get the heading focus every other step has.
+    <StepPage
+      slug="list"
+      leadTestId="list-caption"
+      lead={needsBuilder ? t("filters.intro") : t("list.order.preferenceHint")}
+    >
       {addedNotice > 0 ? (
-        <Alert data-testid="recommendations-added">
+        // `role="status"` (polite) rather than the `Alert` default of
+        // `role="alert"`: this confirms what the family just asked for, and it
+        // lands together with the heading focus, which an assertive live region
+        // would cut short.
+        <Alert role="status" data-testid="recommendations-added">
           <CircleCheckIcon aria-hidden="true" />
           <AlertDescription>
             {t("list.notices.recommendationsAdded", { n: addedNotice })}
@@ -165,7 +169,7 @@ export function ListStep() {
       {needsBuilder ? <FilterPanel /> : null}
 
       <section className="flex flex-col gap-3">
-        <h2 className="text-base font-semibold">{t("list.search.title")}</h2>
+        <h2 className="text-base font-semibold">{t("filters.search.title")}</h2>
         <ProgramSearch
           onAdd={handleAdd}
           excludeIds={wishIds}
@@ -202,6 +206,6 @@ export function ListStep() {
 
       <ImputedNotice imputed={anyImputed} />
       <OrderCount />
-    </section>
+    </StepPage>
   );
 }
