@@ -118,6 +118,30 @@ async function seedList(
   );
 }
 
+/**
+ * The welcome answer on its own, without a list (§9b item 2).
+ *
+ * Since the welcome page replaced step 1's "list exists?" radio, `listExists`
+ * is what `canEnterStep(1)` requires: a hard load of `/es/student` without it
+ * is sent back to `/es`. Tests that are about a *page load* — the focus test
+ * asserts that a fresh load steals no focus — seed the answer instead of
+ * clicking through the front door, which would navigate client-side.
+ */
+async function seedListChoice(page: Page, listExists = true): Promise<void> {
+  await page.addInitScript(
+    ([key, value]) => {
+      window.sessionStorage.setItem(key, value);
+    },
+    [
+      PERSIST_KEY,
+      JSON.stringify({
+        state: { listExists, useEquivalenceClasses: false, wishes: [] },
+        version: PERSIST_VERSION,
+      }),
+    ] as const,
+  );
+}
+
 /** Step 1 with a valid identifier typed in, which is what unlocks the rest. */
 async function identify(
   page: Page,
@@ -250,8 +274,26 @@ async function scan(page: Page, info: TestInfo, label: string): Promise<void> {
 
 for (const locale of LOCALES) {
   test.describe(`a11y — ${locale}`, () => {
+    test("the welcome page", async ({ page }, info) => {
+      await page.goto(`/${locale}`);
+      await expect(
+        page.getByRole("heading", {
+          level: 1,
+          name: MESSAGES[locale].app.welcome.headline,
+        }),
+      ).toBeVisible();
+      // The two buttons are one labelled group, and they are the only way in
+      // (§9b item 2) — a scan of the wizard's front door is not optional.
+      await scan(page, info, `welcome (${locale})`);
+    });
+
     test("step 1, empty and filled", async ({ page }, info) => {
-      await page.goto(`/${locale}/student`);
+      // Through the front door: the welcome answer is what unlocks step 1, and
+      // "No — help me build it" is the branch that also opens step 2's filter
+      // panel later on.
+      await page.goto(`/${locale}`);
+      await page.getByTestId("welcome-no").click();
+      await page.waitForURL(`**/${locale}/student`);
       await expect(
         page.getByRole("heading", {
           level: 1,
@@ -260,12 +302,12 @@ for (const locale of LOCALES) {
       ).toBeVisible();
       await scan(page, info, `step 1 (${locale}) — empty`);
 
-      // Filled: the identifier feedback, the "list exists" radio group and the
-      // ties switch all carry state now, and the ties callout is rendered.
+      // Filled: the identifier feedback, the answer note and the ties switch
+      // all carry state now, and the ties callout is rendered.
       await page
         .getByLabel(MESSAGES[locale].student.idLabel)
         .fill(STRICT_SMALL.inputs.student_id);
-      await page.locator("#list-status-no").click();
+      await expect(page.getByTestId("list-choice-note")).toBeVisible();
       await page.getByTestId("equivalence-switch").click();
       await expect(page.getByTestId("student-id-feedback")).toHaveAttribute(
         "data-state",
@@ -335,6 +377,26 @@ for (const locale of LOCALES) {
       await scan(page, info, `step 3 (${locale}) — strict, expanded`);
     });
 
+    test("the finish page", async ({ page }, info) => {
+      // The end of the flow (§9b item 6) is a page in its own right — a
+      // heading, a figure, a read-only list, an alert and two exits — and it is
+      // drawn without the stepper and without the Back/Continue bar, so its
+      // landmark and heading structure is not the one every step shares.
+      await seedList(page, STRICT_SMALL, false);
+      await identify(page, locale, STRICT_SMALL.inputs.student_id);
+      await goToStep(page, locale, 3, "result");
+      await expect(page.getByTestId("unmatched-risk")).toBeVisible({
+        timeout: 60_000,
+      });
+
+      await page.getByTestId("result-finish").click();
+      await page.waitForURL(`**/${locale}/finish`);
+      await expect(page.getByTestId("finish-wish")).toHaveCount(
+        STRICT_SMALL.inputs.wishes.length,
+      );
+      await scan(page, info, `finish (${locale})`);
+    });
+
     test("step 3, an equivalence result", async ({ page }, info) => {
       await seedList(page, EQUIV_RESULT, true);
       await identify(page, locale, EQUIV_RESULT.inputs.student_id);
@@ -362,7 +424,8 @@ for (const locale of LOCALES) {
       await expect(page.getByTestId("unmatched-risk")).toBeVisible({
         timeout: 60_000,
       });
-      await page.getByTestId("wizard-continue").click();
+      // §9b item 6: the result step's own choice replaced the generic Continue.
+      await page.getByTestId("result-improve").click();
       await page.waitForURL(`**/${locale}/improve`);
 
       await expect(page.getByTestId("recommendation-card").first()).toBeVisible(
@@ -443,6 +506,9 @@ async function stubGeocode(page: Page): Promise<void> {
  */
 test.describe("focus management", () => {
   test("Continue and Back move focus to the step heading", async ({ page }) => {
+    // Seeded rather than clicked through the welcome page: the first assertion
+    // is about a *fresh load*, which a client-side push from `/es` would not be.
+    await seedListChoice(page);
     await page.goto("/es/student");
     // A fresh page load does *not* steal focus: the family has not navigated.
     expect(await focusedTagName(page)).toBe("BODY");
@@ -475,7 +541,7 @@ test.describe("focus management", () => {
     await expect(page.getByTestId("unmatched-risk")).toBeVisible({
       timeout: 60_000,
     });
-    await page.getByTestId("wizard-continue").click();
+    await page.getByTestId("result-improve").click();
     await page.waitForURL("**/es/improve");
     await expect(page.getByTestId("recommendation-card").first()).toBeVisible({
       timeout: 90_000,

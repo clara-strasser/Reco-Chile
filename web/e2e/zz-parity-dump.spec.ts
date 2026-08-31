@@ -4,6 +4,9 @@ import { resolve } from "node:path";
 
 import { expect, test, type Page } from "@playwright/test";
 
+import en from "../messages/en";
+import es from "../messages/es";
+
 const OUT = process.env.PARITY_OUT ?? "/tmp/parity";
 mkdirSync(OUT, { recursive: true });
 
@@ -19,8 +22,17 @@ type Wish = {
 
 function golden(name: string) {
   return JSON.parse(
-    readFileSync(resolve(process.cwd(), "../tests/fixtures/golden", `${name}.json`), "utf8"),
-  ) as { inputs: { student_id: string; use_equivalence_classes: boolean; wishes: Wish[] } };
+    readFileSync(
+      resolve(process.cwd(), "../tests/fixtures/golden", `${name}.json`),
+      "utf8",
+    ),
+  ) as {
+    inputs: {
+      student_id: string;
+      use_equivalence_classes: boolean;
+      wishes: Wish[];
+    };
+  };
 }
 
 const RUN = "12345678-5";
@@ -46,7 +58,11 @@ type Scenario = {
   cityPrecision?: boolean;
 };
 
-function fromGolden(key: string, name: string, override?: Partial<Scenario>): Scenario {
+function fromGolden(
+  key: string,
+  name: string,
+  override?: Partial<Scenario>,
+): Scenario {
   const g = golden(name);
   return {
     key,
@@ -69,11 +85,36 @@ const SCENARIOS: Scenario[] = [
     key: "ties_without_ties",
     ties: true,
   },
-  { key: "boundary_low", studentId: RUN, ties: false, wishes: [plain("9502:131000000133", 1)] },
-  { key: "boundary_moderate_low", studentId: RUN, ties: false, wishes: [plain("14856:131000000133", 1)] },
-  { key: "boundary_moderate_high", studentId: RUN, ties: false, wishes: [plain("2091:131000000133", 1)] },
-  { key: "boundary_high", studentId: RUN, ties: false, wishes: [plain("8620:131000000131", 1)] },
-  { key: "bare_int", studentId: RUN, ties: false, wishes: [plain("2935:131000000133", 1)] },
+  {
+    key: "boundary_low",
+    studentId: RUN,
+    ties: false,
+    wishes: [plain("9502:131000000133", 1)],
+  },
+  {
+    key: "boundary_moderate_low",
+    studentId: RUN,
+    ties: false,
+    wishes: [plain("14856:131000000133", 1)],
+  },
+  {
+    key: "boundary_moderate_high",
+    studentId: RUN,
+    ties: false,
+    wishes: [plain("2091:131000000133", 1)],
+  },
+  {
+    key: "boundary_high",
+    studentId: RUN,
+    ties: false,
+    wishes: [plain("8620:131000000131", 1)],
+  },
+  {
+    key: "bare_int",
+    studentId: RUN,
+    ties: false,
+    wishes: [plain("2935:131000000133", 1)],
+  },
   {
     key: "equiv_cards",
     studentId: RUN,
@@ -84,10 +125,31 @@ const SCENARIOS: Scenario[] = [
       plain("15600:131000000133", 1),
     ],
   },
-  { key: "badge_orange", studentId: RUN, ties: false, wishes: [plain("10917:131000000133", 1)], improve: true },
-  { ...fromGolden("recommend_no_home", "recommend_01_no_home"), key: "recommend_no_home", improve: true },
-  { ...fromGolden("recommend_home", "recommend_02_home_address_precision"), key: "recommend_home", improve: true, home: true },
-  { ...fromGolden("recommend_home_city", "recommend_03_home_city_precision"), key: "recommend_home_city", improve: true, home: true, cityPrecision: true },
+  {
+    key: "badge_orange",
+    studentId: RUN,
+    ties: false,
+    wishes: [plain("10917:131000000133", 1)],
+    improve: true,
+  },
+  {
+    ...fromGolden("recommend_no_home", "recommend_01_no_home"),
+    key: "recommend_no_home",
+    improve: true,
+  },
+  {
+    ...fromGolden("recommend_home", "recommend_02_home_address_precision"),
+    key: "recommend_home",
+    improve: true,
+    home: true,
+  },
+  {
+    ...fromGolden("recommend_home_city", "recommend_03_home_city_precision"),
+    key: "recommend_home_city",
+    improve: true,
+    home: true,
+    cityPrecision: true,
+  },
 ];
 
 const CITY_WARNING =
@@ -113,6 +175,20 @@ async function seed(page: Page, s: Scenario) {
   await page.addInitScript(
     ([key, value]) => window.sessionStorage.setItem(key, value),
     [PERSIST_KEY, JSON.stringify({ state, version: PERSIST_VERSION })] as const,
+  );
+}
+
+/** The welcome answer with no list — what `canEnterStep(1)` needs (§9b). */
+async function seedChoice(page: Page) {
+  await page.addInitScript(
+    ([key, value]) => window.sessionStorage.setItem(key, value),
+    [
+      PERSIST_KEY,
+      JSON.stringify({
+        state: { listExists: true, useEquivalenceClasses: false, wishes: [] },
+        version: PERSIST_VERSION,
+      }),
+    ] as const,
   );
 }
 
@@ -145,15 +221,26 @@ async function textsOf(page: Page, testId: string): Promise<string[]> {
 async function dumpResult(page: Page) {
   const out: Record<string, unknown> = {};
   out.risk = (await textsOf(page, "unmatched-risk"))[0] ?? null;
-  const alert = page.getByTestId("attention-alert");
-  out.attention_level = (await alert.count()) ? await alert.getAttribute("data-level") : null;
-  out.attention_text = (await alert.count()) ? (await alert.innerText()).trim() : null;
+  // §9b item 5 replaced the three-level attention alert with the positive
+  // headline; the dump records what the headline now says instead.
+  out.assignment_chance = (await textsOf(page, "assignment-chance"))[0] ?? null;
+  out.predicted_school = (await textsOf(page, "predicted-school"))[0] ?? null;
+  out.predicted_rank = (await textsOf(page, "predicted-rank"))[0] ?? null;
+  out.predicted_unmatched =
+    (await textsOf(page, "predicted-unmatched"))[0] ?? null;
+  out.predicted_chance = (await textsOf(page, "predicted-chance"))[0] ?? null;
   out.podium = await textsOf(page, "outcome-item");
   const verdict = page.getByTestId("equivalence-verdict");
-  out.verdict = (await verdict.count()) ? await verdict.getAttribute("data-verdict") : null;
-  out.verdict_text = (await verdict.count()) ? (await verdict.innerText()).trim() : null;
-  out.has_equivalence_block = (await page.getByTestId("equivalence-block").count()) > 0;
-  out.has_tied_order_view = (await page.getByTestId("tied-order-view").count()) > 0;
+  out.verdict = (await verdict.count())
+    ? await verdict.getAttribute("data-verdict")
+    : null;
+  out.verdict_text = (await verdict.count())
+    ? (await verdict.innerText()).trim()
+    : null;
+  out.has_equivalence_block =
+    (await page.getByTestId("equivalence-block").count()) > 0;
+  out.has_tied_order_view =
+    (await page.getByTestId("tied-order-view").count()) > 0;
   out.order_cards = await textsOf(page, "order-card");
   out.grouped_outcomes = await textsOf(page, "grouped-outcome");
   // Family table
@@ -167,7 +254,9 @@ async function dumpResult(page: Page) {
     "rows-shown",
   ]) {
     const loc = page.getByTestId(id);
-    out[id.replace(/-/g, "_")] = (await loc.count()) ? await loc.allInnerTexts() : [];
+    out[id.replace(/-/g, "_")] = (await loc.count())
+      ? await loc.allInnerTexts()
+      : [];
   }
   const err = page.getByTestId("result-error");
   out.error = (await err.count()) ? (await err.innerText()).trim() : null;
@@ -176,7 +265,9 @@ async function dumpResult(page: Page) {
 
 async function openDisclosures(page: Page) {
   for (let pass = 0; pass < 8; pass += 1) {
-    const collapsed = page.locator("[data-slot='collapsible-trigger'][aria-expanded='false']");
+    const collapsed = page.locator(
+      "[data-slot='collapsible-trigger'][aria-expanded='false']",
+    );
     const n = await collapsed.count();
     if (n === 0) return;
     let clicked = 0;
@@ -199,8 +290,11 @@ for (const s of SCENARIOS) {
     await seed(page, s);
     if (s.home) await stubGeocode(page, s.cityPrecision === true);
     await page.goto("/es/student");
-    await page.getByLabel("RUN/IPE del estudiante").fill(s.studentId);
-    await expect(page.getByTestId("student-id-feedback")).toHaveAttribute("data-state", "valid");
+    await page.getByLabel(es.student.idLabel).fill(s.studentId);
+    await expect(page.getByTestId("student-id-feedback")).toHaveAttribute(
+      "data-state",
+      "valid",
+    );
 
     const nav = page.getByRole("navigation", { name: /pasos|steps/i });
     const resultLink = nav.getByRole("link", { name: /^3\./ });
@@ -208,11 +302,17 @@ for (const s of SCENARIOS) {
 
     if ((await resultLink.count()) === 0) {
       // step 3 is locked (over-cap list): record what step 2 says instead
-      await page.getByRole("navigation", { name: /pasos|steps/i }).getByRole("link", { name: /^2\./ }).click();
+      await page
+        .getByRole("navigation", { name: /pasos|steps/i })
+        .getByRole("link", { name: /^2\./ })
+        .click();
       await page.waitForURL("**/es/list");
       dump.step3_locked = true;
       dump.list_body = await page.locator("main").innerText();
-      writeFileSync(resolve(OUT, `${s.key}.json`), JSON.stringify(dump, null, 1));
+      writeFileSync(
+        resolve(OUT, `${s.key}.json`),
+        JSON.stringify(dump, null, 1),
+      );
       return;
     }
 
@@ -226,15 +326,20 @@ for (const s of SCENARIOS) {
     dump.result_body = await page.locator("main").innerText();
 
     if (s.improve) {
-      await page.getByTestId("wizard-continue").click();
+      await page.getByTestId("result-improve").click();
       await page.waitForURL("**/es/improve");
       if (s.home) {
         await page.getByTestId("home-address-input").fill("Hanga Roa");
         await page.getByTestId("geocode-submit").click();
-        await expect(page.getByTestId("geocode-feedback")).toBeVisible({ timeout: 20_000 });
+        await expect(page.getByTestId("geocode-feedback")).toBeVisible({
+          timeout: 20_000,
+        });
       }
       await expect(
-        page.getByTestId("recommendation-card").first().or(page.getByTestId("recommendation-empty")),
+        page
+          .getByTestId("recommendation-card")
+          .first()
+          .or(page.getByTestId("recommendation-empty")),
       ).toBeVisible({ timeout: 180_000 });
       const cards = page.getByTestId("recommendation-card");
       const n = await cards.count();
@@ -253,11 +358,15 @@ for (const s of SCENARIOS) {
           calc: detail,
         });
         await page.keyboard.press("Escape");
-        await expect(page.locator("[data-slot='popover-content']:visible")).toHaveCount(0);
+        await expect(
+          page.locator("[data-slot='popover-content']:visible"),
+        ).toHaveCount(0);
       }
       dump.recommendations = rec;
-      dump.recommendation_count = (await textsOf(page, "recommendation-count"))[0] ?? null;
-      dump.current_risk = (await textsOf(page, "current-unmatched-risk"))[0] ?? null;
+      dump.recommendation_count =
+        (await textsOf(page, "recommendation-count"))[0] ?? null;
+      dump.current_risk =
+        (await textsOf(page, "current-unmatched-risk"))[0] ?? null;
       dump.improve_body = await page.locator("main").innerText();
     }
 
@@ -269,10 +378,22 @@ for (const s of SCENARIOS) {
 
 const PRECISIONS = [
   ["address", null],
-  ["street", "El geocodificador encontró la calle, pero no un punto de dirección exacto. Las distancias se calculan desde una ubicación aproximada a nivel de calle."],
-  ["street_number", "El geocodificador encontró la calle, pero no pudo confirmar el número exacto. Las distancias se calculan desde una ubicación aproximada a nivel de calle."],
-  ["city", "El geocodificador solo pudo identificar la ciudad o comuna. Las distancias son aproximadas."],
-  ["approximate", "El geocodificador devolvió solo una ubicación aproximada. Las distancias deben interpretarse con cuidado."],
+  [
+    "street",
+    "El geocodificador encontró la calle, pero no un punto de dirección exacto. Las distancias se calculan desde una ubicación aproximada a nivel de calle.",
+  ],
+  [
+    "street_number",
+    "El geocodificador encontró la calle, pero no pudo confirmar el número exacto. Las distancias se calculan desde una ubicación aproximada a nivel de calle.",
+  ],
+  [
+    "city",
+    "El geocodificador solo pudo identificar la ciudad o comuna. Las distancias son aproximadas.",
+  ],
+  [
+    "approximate",
+    "El geocodificador devolvió solo una ubicación aproximada. Las distancias deben interpretarse con cuidado.",
+  ],
 ] as const;
 
 test("dump geocode_precision", async ({ page }) => {
@@ -301,11 +422,16 @@ test("dump geocode_precision", async ({ page }) => {
   });
   await seed(page, s);
   await page.goto("/es/student");
-  await page.getByLabel("RUN/IPE del estudiante").fill(s.studentId);
-  await page.getByRole("navigation", { name: /pasos|steps/i }).getByRole("link", { name: /^3\./ }).click();
+  await page.getByLabel(es.student.idLabel).fill(s.studentId);
+  await page
+    .getByRole("navigation", { name: /pasos|steps/i })
+    .getByRole("link", { name: /^3\./ })
+    .click();
   await page.waitForURL("**/es/result");
-  await expect(page.getByTestId("unmatched-risk")).toBeVisible({ timeout: 120_000 });
-  await page.getByTestId("wizard-continue").click();
+  await expect(page.getByTestId("unmatched-risk")).toBeVisible({
+    timeout: 120_000,
+  });
+  await page.getByTestId("result-improve").click();
   await page.waitForURL("**/es/improve");
 
   for (let i = 0; i < PRECISIONS.length; i += 1) {
@@ -323,18 +449,26 @@ test("dump geocode_precision", async ({ page }) => {
         : null,
     });
   }
-  writeFileSync(resolve(OUT, "geocode_precision.json"), JSON.stringify(results, null, 1));
+  writeFileSync(
+    resolve(OUT, "geocode_precision.json"),
+    JSON.stringify(results, null, 1),
+  );
 });
 
 // --- step 2 dumps ---------------------------------------------------------
 
-for (const key of ["strict_06", "equiv_02", "ties_without_ties", "equiv_04_over_cap"]) {
+for (const key of [
+  "strict_06",
+  "equiv_02",
+  "ties_without_ties",
+  "equiv_04_over_cap",
+]) {
   test(`dump list_${key}`, async ({ page }) => {
     test.slow();
     const s = SCENARIOS.find((x) => x.key === key)!;
     await seed(page, s);
     await page.goto("/es/student");
-    await page.getByLabel("RUN/IPE del estudiante").fill(s.studentId);
+    await page.getByLabel(es.student.idLabel).fill(s.studentId);
     await page
       .getByRole("navigation", { name: /pasos|steps/i })
       .getByRole("link", { name: /^2\./ })
@@ -347,7 +481,11 @@ for (const key of ["strict_06", "equiv_02", "ties_without_ties", "equiv_04_over_
     await openDisclosures(page);
     writeFileSync(
       resolve(OUT, `list_${key}.json`),
-      JSON.stringify({ key, body: await page.locator("main").innerText() }, null, 1),
+      JSON.stringify(
+        { key, body: await page.locator("main").innerText() },
+        null,
+        1,
+      ),
     );
   });
 }
@@ -364,14 +502,20 @@ test("dump identifiers", async ({ page }) => {
     "not-an-identifier",
     "٤٥٦-1",
   ];
+  // Step 1 is behind the welcome answer since §9b item 2; this dump is about
+  // the identifier feedback, so the answer is seeded rather than clicked.
+  await seedChoice(page);
   await page.goto("/es/student");
   const out: Record<string, unknown> = {};
-  const field = page.getByLabel("RUN/IPE del estudiante");
+  const field = page.getByLabel(es.student.idLabel);
   for (const value of cases) {
     await field.fill("");
     await field.fill(value);
     const fb = page.getByTestId("student-id-feedback");
-    await expect(fb).toHaveAttribute("data-state", /valid|invalid|empty|incomplete/);
+    await expect(fb).toHaveAttribute(
+      "data-state",
+      /valid|invalid|empty|incomplete/,
+    );
     out[value] = {
       state: await fb.getAttribute("data-state"),
       text: (await fb.innerText()).trim(),
@@ -387,21 +531,29 @@ test("dump en_strict_04", async ({ page }) => {
   const s = SCENARIOS.find((x) => x.key === "strict_04")!;
   await seed(page, s);
   await page.goto("/en/student");
-  await page.getByLabel("Student RUN/IPE").fill(s.studentId);
+  await page.getByLabel(en.student.idLabel).fill(s.studentId);
   await page
     .getByRole("navigation", { name: /steps/i })
     .getByRole("link", { name: /^3\./ })
     .click();
   await page.waitForURL("**/en/result");
-  await expect(page.getByTestId("unmatched-risk")).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByTestId("unmatched-risk")).toBeVisible({
+    timeout: 120_000,
+  });
   await openDisclosures(page);
   writeFileSync(
     resolve(OUT, "en_strict_04.json"),
     JSON.stringify(
       {
         risk: (await page.getByTestId("unmatched-risk").innerText()).trim(),
-        level: await page.getByTestId("attention-alert").getAttribute("data-level"),
-        alert: (await page.getByTestId("attention-alert").innerText()).trim(),
+        // The attention alert is gone (§9b item 5); the headline is what the
+        // English side-by-side compares now.
+        chance: (
+          await page.getByTestId("assignment-chance").innerText()
+        ).trim(),
+        headline: (
+          await page.getByTestId("result-headline").innerText()
+        ).trim(),
         podium: await page.getByTestId("outcome-item").allInnerTexts(),
         family: await page.getByTestId("family-table").innerText(),
         detail: await page.getByTestId("detail-table").innerText(),

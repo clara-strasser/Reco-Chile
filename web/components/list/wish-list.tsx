@@ -36,6 +36,10 @@ import {
 } from "@dnd-kit/sortable";
 import { useTranslations } from "next-intl";
 
+import {
+  formatProgramLocation,
+  joinProgramParts,
+} from "@/components/list/program-location";
 import { usePrograms } from "@/lib/programs";
 import { useWizardStore, type Wish } from "@/lib/store/wizard";
 
@@ -65,10 +69,20 @@ export function WishList() {
   // Labels for the drag announcements: a screen reader has to hear the school
   // name, not the raw `rbd:program_code`. Served from the same cache the step
   // and the cards already filled, so this costs no extra request.
+  //
+  // The commune and region ride along (MIGRATION.md §9b.4): reordering two
+  // schools that share a name is exactly when "moved X to preference 2" has to
+  // say *which* X, and the announcement is all a screen-reader user hears.
   const { programs } = usePrograms(ids);
   const nameOf = React.useCallback(
-    (id: string | number) =>
-      programs.get(String(id))?.program_label ?? String(id),
+    (id: string | number) => {
+      const program = programs.get(String(id));
+      if (!program) return String(id);
+      return joinProgramParts([
+        program.program_label,
+        formatProgramLocation(program.school_commune, program.region),
+      ]);
+    },
     [programs],
   );
 

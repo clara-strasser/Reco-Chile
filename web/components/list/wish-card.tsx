@@ -12,6 +12,13 @@
  * on a phone — the declared-priorities caption, Remove, and (strict mode only)
  * the Move up / Move down buttons.
  *
+ * The commune and the region are not optional (MIGRATION.md §9b.4): the label
+ * alone repeats across communes — "Liceo Ignacio Carrera Pinto" is a school in
+ * San Vicente and a different one in Frutillar — so the location is always
+ * rendered, with or without a program display name in front of it. While the
+ * program is still loading the line is a skeleton, never an empty gap that
+ * later pushes the card open.
+ *
  * The card holds no program data of its own: it only knows a `program_id` and
  * asks `useProgram()` for everything else, so a label rule that changes
  * server-side (MIGRATION.md §10) can never leave a stale name on screen. It
@@ -31,6 +38,11 @@ import {
 import { useTranslations } from "next-intl";
 
 import { ProgramDetails } from "@/components/list/program-details";
+import {
+  formatProgramLocation,
+  joinProgramParts,
+  PROGRAM_LOCATION_SEPARATOR,
+} from "@/components/list/program-location";
 import { WishPriorities } from "@/components/list/wish-priorities";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -45,6 +57,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useProgram } from "@/lib/programs/use-programs";
 import {
   useWizardStore,
@@ -63,14 +76,6 @@ export type WishCardProps = {
   /** Equivalence-class mode: a group input replaces rank and reordering. */
   ties: boolean;
 };
-
-/** Joined with the same separator the prototype uses for the detail line. */
-function detailLine(parts: readonly (string | null | undefined)[]): string {
-  return parts
-    .map((part) => (part ?? "").trim())
-    .filter((part) => part !== "" && part.toLowerCase() !== "nan")
-    .join(" · ");
-}
 
 export function WishCard({
   wish,
@@ -101,12 +106,12 @@ export function WishCard({
 
   // Until the program resolves, the id is the only truthful name available.
   const name = program?.program_label ?? wish.programId;
-  const details = program
-    ? detailLine([
-        program.program_display_name,
-        program.school_commune,
-        program.region,
-      ])
+  // Shown in front of the location when the data has one; a program without a
+  // display name loses this half of the line and keeps the location.
+  const detailPrefix = joinProgramParts([program?.program_display_name]);
+  const location = program
+    ? formatProgramLocation(program.school_commune, program.region) ||
+      t("card.locationUnknown")
     : "";
 
   const declared = SAE_PRIORITY_FLAGS.filter(
@@ -193,18 +198,27 @@ export function WishCard({
             <p className="font-medium break-words" data-testid="wish-label">
               {name}
             </p>
-            {details ? (
+            {program ? (
               <p
                 className="text-xs text-muted-foreground"
                 data-testid="wish-details"
               >
-                {details}
+                {detailPrefix
+                  ? `${detailPrefix}${PROGRAM_LOCATION_SEPARATOR}`
+                  : null}
+                {/* The half that disambiguates two same-named schools, in its
+                    own element so it can be asserted on independently of the
+                    display name the data may or may not carry. */}
+                <span data-testid="wish-location">{location}</span>
               </p>
             ) : null}
             {loading ? (
-              <p className="text-xs text-muted-foreground">
-                {t("card.loading")}
-              </p>
+              // A skeleton, not a blank line: the detail line is one of the two
+              // things that make the card readable, so its space is reserved.
+              <div role="status" data-testid="wish-details-loading">
+                <span className="sr-only">{t("card.loading")}</span>
+                <Skeleton aria-hidden className="h-3 w-48 max-w-full" />
+              </div>
             ) : null}
             {notFound ? (
               <p className="text-xs text-destructive">

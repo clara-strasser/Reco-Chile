@@ -4,6 +4,7 @@ import type { GeocodeResult, SimulationResponse } from "@/lib/store/types";
 import {
   canContinue,
   canEnterStep,
+  hasListChoice,
   DEFAULT_RECOMMENDATION_COUNT,
   emptyFilters,
   equivalenceOrderCount,
@@ -57,6 +58,9 @@ const store = () => useWizardStore.getState();
 function seed(options: { ties?: boolean; programIds?: string[] } = {}) {
   const { ties = false, programIds = ["1001:A", "1002:B", "1003:C"] } = options;
   store().reset();
+  // The welcome answer (§9b item 2) is what unlocks step 1 now, so every
+  // "reachable" fixture has to include it.
+  store().setListExists(true);
   store().setStudentId(VALID_RUN);
   store().setUseEquivalenceClasses(ties);
   for (const programId of programIds) store().addWish(programId);
@@ -528,14 +532,31 @@ describe("step gates §4.1", () => {
     expect(canContinue(state(), 1)).toBe(true);
   });
 
-  it("step 1 can always be entered; step 2 needs step 1", () => {
-    expect(canEnterStep(state(), 1)).toBe(true);
+  it("step 1 needs the welcome answer; step 2 needs step 1 (§9b item 2)", () => {
+    // Nothing answered: the guard's target is the welcome page, not step 1.
+    expect(hasListChoice(state())).toBe(false);
+    expect(canEnterStep(state(), 1)).toBe(false);
     expect(canEnterStep(state(), 2)).toBe(false);
+
     store().setStudentId(VALID_RUN);
+    // A valid identifier does not substitute for the choice.
+    expect(canEnterStep(state(), 1)).toBe(false);
+    expect(canEnterStep(state(), 2)).toBe(false);
+
+    store().setListExists(false);
+    expect(canEnterStep(state(), 1)).toBe(true);
     expect(canEnterStep(state(), 2)).toBe(true);
+
+    // Either answer counts; only `null` locks the step.
+    store().setListExists(true);
+    expect(canEnterStep(state(), 1)).toBe(true);
+    store().setListExists(null);
+    expect(canEnterStep(state(), 1)).toBe(false);
+    expect(canEnterStep(state(), 2)).toBe(false);
   });
 
   it("step 2 needs at least one wish", () => {
+    store().setListExists(true);
     store().setStudentId(VALID_RUN);
     expect(canContinue(state(), 2)).toBe(false);
     store().addWish("1001:A");
@@ -543,6 +564,7 @@ describe("step gates §4.1", () => {
   });
 
   it("step 2 blocks an over-cap tied list, and only in ties mode", () => {
+    store().setListExists(true);
     store().setStudentId(VALID_RUN);
     store().setUseEquivalenceClasses(true);
     for (let i = 0; i < 8; i += 1) store().addWish(`10${i}:P`);
@@ -580,6 +602,9 @@ describe("step gates §4.1", () => {
   });
 
   it("lastAllowedStep is the redirect target of the step guard", () => {
+    // `null` = not even step 1: the welcome page is where the guard sends them.
+    expect(lastAllowedStep(state())).toBeNull();
+    store().setListExists(false);
     expect(lastAllowedStep(state())).toBe(1);
     store().setStudentId(VALID_RUN);
     expect(lastAllowedStep(state())).toBe(2);
@@ -590,6 +615,7 @@ describe("step gates §4.1", () => {
   });
 
   it("exposes curried selectors for useWizardStore(selector)", () => {
+    store().setListExists(true);
     store().setStudentId(VALID_RUN);
     // Called directly here; in a component this is `useWizardStore(selector)`.
     expect(selectCanContinue(1)(store())).toBe(true);
@@ -682,6 +708,7 @@ describe("the wizard's own navigations and the busy flag", () => {
 
 describe("§4.1 — the /meta.max_wishes gate on step 2", () => {
   const fill = (n: number) => {
+    store().setListExists(true);
     store().setStudentId(VALID_RUN);
     for (let i = 0; i < n; i += 1) store().addWish(`10${i}:P`);
   };
@@ -718,6 +745,7 @@ describe("§4.1 — the /meta.max_wishes gate on step 2", () => {
   });
 
   it("still needs at least one program, and keeps the order-count gate", () => {
+    store().setListExists(true);
     store().setStudentId(VALID_RUN);
     store().setMaxWishes(30);
     expect(isWishListValid(store())).toBe(false);
@@ -831,6 +859,26 @@ describe("sessionStorage persistence §4.2", () => {
     expect(state.simulation).toBeNull();
     expect(state.simulationStale).toBe(true);
     expect(state.home).toBeNull();
+  });
+
+  it("flags the store as hydrated, and keeps that flag across a reset", async () => {
+    // The step guard waits for this before it redirects (§9b item 2): without
+    // it, a reload of a legitimately reachable step would bounce to the welcome
+    // page because the persisted `listExists` had not landed yet.
+    expect(store().hydrated).toBe(false);
+
+    await hydrateWizardStore();
+    expect(store().hydrated).toBe(true);
+
+    // It describes the document, not the wizard, so starting over keeps it.
+    store().reset();
+    expect(store().hydrated).toBe(true);
+    expect(store().listExists).toBeNull();
+
+    // And it is never written to the session.
+    store().setListExists(true);
+    const raw = window.sessionStorage.getItem(WIZARD_PERSIST_KEY) as string;
+    expect(raw).not.toContain("hydrated");
   });
 
   it("hydrateWizardStore() reads the session back into the live store", async () => {

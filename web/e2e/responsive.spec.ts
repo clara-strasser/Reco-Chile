@@ -264,16 +264,36 @@ async function expectStepperUsable(
   ).toBe(1);
 }
 
-/** The Back/Continue bar: visible, inside the viewport, tappable. */
+/** The Back/Continue bar: visible, inside the viewport, tappable.
+ *
+ * `forward: false` is a step that states its own way onward instead of the
+ * shell's Continue — step 3 since §9b item 6 — so the button must be absent
+ * rather than merely disabled. `back: false` likewise asserts no Back button
+ * where there is none to find (step 1, and the completion page, which is drawn
+ * without the bar entirely). */
 async function expectNavUsable(
   page: Page,
   where: string,
   { width, height }: { width: number; height: number },
-  { back }: { back: boolean },
+  { back, forward = true }: { back: boolean; forward?: boolean },
 ): Promise<void> {
+  if (!forward) {
+    await expect(
+      page.getByTestId("wizard-continue"),
+      `${where}: the bar still offers a generic Continue`,
+    ).toHaveCount(0);
+  }
+
+  if (!back) {
+    await expect(
+      page.getByTestId("wizard-back"),
+      `${where}: the bar still offers Back`,
+    ).toHaveCount(0);
+  }
+
   const buttons = [
     ...(back ? [page.getByTestId("wizard-back")] : []),
-    page.getByTestId("wizard-continue"),
+    ...(forward ? [page.getByTestId("wizard-continue")] : []),
   ];
 
   for (const button of buttons) {
@@ -300,19 +320,29 @@ async function expectNavUsable(
   }
 }
 
-/** One step, fully checked, plus a screenshot for the manual comparison. */
+/**
+ * One step, fully checked, plus a screenshot for the manual comparison.
+ *
+ * `stepper: false` is a page in the wizard's route group that is not a step and
+ * carries neither rail nor Back/Continue bar — the completion page (§9b item
+ * 6). Everything else about it still has to fit a 360 px screen.
+ */
 async function checkStep(
   page: Page,
   slug: string,
   viewport: (typeof VIEWPORTS)[number],
-  { back }: { back: boolean },
+  {
+    back,
+    forward = true,
+    stepper = true,
+  }: { back: boolean; forward?: boolean; stepper?: boolean },
 ): Promise<void> {
   const where = `${slug} @ ${viewport.name}`;
   await expectNoHorizontalScroll(page, where);
   await expectNoClippedLabels(page, where);
   await expectTablesScrollThemselves(page, where);
-  await expectStepperUsable(page, where, viewport.width);
-  await expectNavUsable(page, where, viewport, { back });
+  if (stepper) await expectStepperUsable(page, where, viewport.width);
+  await expectNavUsable(page, where, viewport, { back, forward });
   await page.screenshot({
     path: `${SHOTS}/${slug}-${viewport.name}.png`,
     fullPage: true,
@@ -378,7 +408,25 @@ for (const viewport of VIEWPORTS) {
       await expect(page.getByTestId("unmatched-risk")).toBeVisible({
         timeout: 60_000,
       });
-      await checkStep(page, "3-result", viewport, { back: true });
+      await checkStep(page, "3-result", viewport, {
+        back: true,
+        forward: false,
+      });
+      // The two halves of the §9b item 6 choice are the way onward now, so they
+      // are what has to fit and be tappable at this width.
+      for (const testId of ["result-finish", "result-improve"]) {
+        const choice = page.getByTestId(testId);
+        await expect(choice).toBeVisible();
+        const box = (await choice.boundingBox())!;
+        expect(
+          box.x + box.width,
+          `3-result @ ${viewport.name}: ${testId} runs past the viewport`,
+        ).toBeLessThanOrEqual(viewport.width + 1);
+        expect(
+          box.height,
+          `3-result @ ${viewport.name}: ${testId} is too small to tap`,
+        ).toBeGreaterThanOrEqual(32);
+      }
 
       // Collapsed, the step has one table; expanded it has the detailed
       // calculation too, which is the widest table in the wizard.
@@ -386,10 +434,38 @@ for (const viewport of VIEWPORTS) {
         .getByRole("button", { name: es.result.detail.trigger })
         .click();
       await expect(page.getByTestId("detail-table")).toBeVisible();
-      await checkStep(page, "3-result-detail", viewport, { back: true });
+      await checkStep(page, "3-result-detail", viewport, {
+        back: true,
+        forward: false,
+      });
+
+      // --- the completion page -------------------------------------------
+      // Not a step (§9b item 6): no rail, no Back/Continue bar. Its read-only
+      // list is the widest thing on it — long school names plus a commune and
+      // a region under each — so 360 px is exactly where it can break.
+      await page.getByTestId("result-finish").click();
+      await page.waitForURL("**/es/finish");
+      await expect(page.getByTestId("finish-wish")).toHaveCount(
+        LIST.inputs.wishes.length,
+      );
+      await expect(
+        page.getByRole("navigation", { name: es.steps.navLabel }),
+      ).toHaveCount(0);
+      await checkStep(page, "5-finish", viewport, {
+        back: false,
+        forward: false,
+        stepper: false,
+      });
+
+      // Back to the result, the way the page offers it, and on to step 4.
+      await page.getByTestId("finish-back").click();
+      await page.waitForURL("**/es/result");
+      await expect(page.getByTestId("unmatched-risk")).toBeVisible({
+        timeout: 60_000,
+      });
 
       // --- step 4 --------------------------------------------------------
-      await page.getByTestId("wizard-continue").click();
+      await page.getByTestId("result-improve").click();
       await page.waitForURL("**/es/improve");
       await expect(page.getByTestId("recommendation-card").first()).toBeVisible(
         { timeout: 90_000 },
@@ -421,7 +497,14 @@ test.describe("responsive — 360 px furniture", () => {
   test("the header keeps the brand and the locale switcher on one row", async ({
     page,
   }) => {
+    // Seeded so step 1 is actually reachable: without the welcome answer the
+    // guard bounces to `/es` (§9b item 2) and the header would be measured
+    // mid-redirect.
+    await seedList(page);
     await page.goto("/es/student");
+    await expect(
+      page.getByRole("heading", { level: 1, name: es.student.title }),
+    ).toBeVisible();
 
     const header = page.locator("header").first();
     const switcher = page.getByRole("navigation", {

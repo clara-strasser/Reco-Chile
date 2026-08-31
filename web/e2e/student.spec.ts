@@ -6,11 +6,15 @@ import es from "../messages/es";
 /**
  * Phase 3, step 1 — the Student step (MIGRATION.md §4.1 row 1).
  *
- * `wizard.spec.ts` already covers the shell (routing, guard, stepper, locale
- * switch). What is under test here is the step itself: the live RUN/IPE
- * pre-check and the two mode controls, including which of them survives a
- * reload — the privacy line of §4.2/§4.5 that says the identifier is
- * memory-only while the family's mode choices are not.
+ * `wizard.spec.ts` already covers the shell (routing, the welcome page, the
+ * guard, the stepper, the locale switch). What is under test here is the step
+ * itself: the live RUN/IPE pre-check, the copy MIGRATION.md §9b item 3 stripped
+ * of jargon, and the two mode facts — the welcome answer and the ties switch —
+ * including which of them survives a reload: the privacy line of §4.2/§4.5 that
+ * says the identifier is memory-only while the family's mode choices are not.
+ *
+ * Since §9b the step is only reachable through the welcome page, so every test
+ * enters through `openStudent()` rather than deep-linking `/es/student`.
  *
  * Expected copy is read from `messages/{es,en}/*.json`, never frozen here, so a
  * reworded sentence does not fail a test that is about behaviour.
@@ -55,6 +59,19 @@ function validCopy(locale: Locale, kind: "RUN" | "IPE"): string {
   return copy(locale, "student.idValid").replace("{kind}", kind);
 }
 
+/** Through the welcome page into step 1 — the only way in since §9b item 2. */
+async function openStudent(
+  page: Page,
+  {
+    locale = "es",
+    answer = "yes",
+  }: { locale?: Locale; answer?: "yes" | "no" } = {},
+) {
+  await page.goto(`/${locale}`);
+  await page.getByTestId(`welcome-${answer}`).click();
+  await page.waitForURL(`**/${locale}/student`);
+}
+
 function identifierInput(page: Page, locale: Locale = "es") {
   return page.getByLabel(copy(locale, "student.idLabel"));
 }
@@ -79,7 +96,7 @@ test.describe("step 1 — identify the student", () => {
   test("a wrong check digit shows the red helper and keeps Continue disabled", async ({
     page,
   }) => {
-    await page.goto("/es/student");
+    await openStudent(page);
 
     await expect(feedback(page)).toHaveAttribute("data-state", "empty");
     await expect(feedback(page)).toHaveText(
@@ -105,7 +122,7 @@ test.describe("step 1 — identify the student", () => {
   });
 
   test("a valid IPE enables Continue", async ({ page }) => {
-    await page.goto("/es/student");
+    await openStudent(page);
 
     await identifierInput(page).fill(VALID_IPE);
 
@@ -119,10 +136,10 @@ test.describe("step 1 — identify the student", () => {
     await expect(continueButton(page)).toBeEnabled();
   });
 
-  test("the why-do-we-ask popover carries both prototype paragraphs", async ({
+  test("the why-do-we-ask popover explains the lottery without jargon", async ({
     page,
   }) => {
-    await page.goto("/es/student");
+    await openStudent(page);
 
     await page.getByTestId("student-why-trigger").click();
 
@@ -130,12 +147,44 @@ test.describe("step 1 — identify the student", () => {
     await expect(content).toBeVisible();
     await expect(content).toContainText(copy("es", "student.why.body"));
     await expect(content).toContainText(copy("es", "student.why.privacy"));
+
+    // §9b item 3: no "MTB tie-break calculation", and the OpenStreetMap note
+    // belongs to step 4, where the address is actually used.
+    await expect(content).not.toContainText(/MTB/i);
+    await expect(content).not.toContainText(/OpenStreetMap/i);
+  });
+
+  test("the research-tool disclaimer opens the step", async ({ page }) => {
+    await openStudent(page);
+
+    // §9b item 2: prominent, above the identifier field, and no interaction
+    // needed to read it.
+    await expect(page.getByTestId("student-disclaimer")).toHaveText(
+      copy("es", "student.disclaimer"),
+    );
+  });
+
+  test("the identifier help drops the check-digit jargon", async ({ page }) => {
+    await openStudent(page);
+
+    const input = identifierInput(page);
+    const describedBy = (await input.getAttribute("aria-describedby")) ?? "";
+    const helpId = describedBy
+      .split(" ")
+      .find((id) => id.endsWith("-help")) as string;
+
+    await expect(page.locator(`#${helpId}`)).toHaveText(
+      copy("es", "student.idHelp"),
+    );
+    // §9b item 3: "modulo-11 check digit" is gone; the sentence still tells the
+    // family what to type.
+    await expect(page.locator(`#${helpId}`)).not.toContainText(/módulo/i);
   });
 
   test("the estimate caveat is collapsed until it is opened", async ({
     page,
   }) => {
-    await page.goto("/es/student");
+    await openStudent(page);
 
     const trigger = page.getByTestId("about-estimate-trigger");
     await expect(trigger).toHaveText(copy("es", "app.aboutEstimate.title"));
@@ -150,7 +199,7 @@ test.describe("step 1 — identify the student", () => {
   test("the privacy note is visible without any interaction", async ({
     page,
   }) => {
-    await page.goto("/es/student");
+    await openStudent(page);
 
     await expect(page.getByTestId("student-privacy-note")).toHaveText(
       copy("es", "student.privacyNote"),
@@ -162,7 +211,7 @@ test.describe("step 1 — mode controls", () => {
   test("turning the ties switch on reveals the preference-group alert", async ({
     page,
   }) => {
-    await page.goto("/es/student");
+    await openStudent(page);
 
     const toggle = page.getByRole("switch", {
       name: copy("es", "student.ties.label"),
@@ -190,7 +239,7 @@ test.describe("step 1 — mode controls", () => {
   test("the switch is operable from the keyboard and keeps its help text", async ({
     page,
   }) => {
-    await page.goto("/es/student");
+    await openStudent(page);
 
     const toggle = page.getByRole("switch", {
       name: copy("es", "student.ties.label"),
@@ -207,15 +256,12 @@ test.describe("step 1 — mode controls", () => {
     );
   });
 
-  test("the list-status answer survives a reload; the RUN/IPE does not", async ({
+  test("the welcome answer survives a reload; the RUN/IPE does not", async ({
     page,
   }) => {
-    await page.goto("/es/student");
+    await openStudent(page, { answer: "no" });
 
     await identifierInput(page).fill(VALID_RUN);
-    await page
-      .getByRole("radio", { name: copy("es", "student.listStatus.no") })
-      .click();
     await page
       .getByRole("switch", { name: copy("es", "student.ties.label") })
       .click();
@@ -231,26 +277,41 @@ test.describe("step 1 — mode controls", () => {
 
     await page.reload();
 
-    await expect(
-      page.getByRole("radio", { name: copy("es", "student.listStatus.no") }),
-    ).toHaveAttribute("aria-checked", "true");
+    // The answer is what keeps the step reachable at all after a reload, and
+    // the note still reports it (§9b item 2).
+    await expect(page).toHaveURL(/\/es\/student$/);
+    await expect(page.getByTestId("list-choice-note")).toContainText(
+      copy("es", "app.welcome.no"),
+    );
     await expect(page.getByTestId("equivalence-info")).toBeVisible();
 
     await expect(identifierInput(page)).toHaveValue("");
     await expect(feedback(page)).toHaveAttribute("data-state", "empty");
     await expect(continueButton(page)).toBeDisabled();
   });
+
+  test("the change link goes back to the welcome question", async ({
+    page,
+  }) => {
+    await openStudent(page, { answer: "yes" });
+
+    await page.getByTestId("list-choice-change").click();
+
+    await page.waitForURL("**/es");
+    await expect(page.getByTestId("welcome-no")).toBeVisible();
+  });
 });
 
 test.describe("step 1 — English", () => {
   test("renders the same controls in the second locale", async ({ page }) => {
-    await page.goto("/en/student");
+    await openStudent(page, { locale: "en" });
 
-    await expect(
-      page.getByRole("radiogroup", {
-        name: copy("en", "student.listStatus.label"),
-      }),
-    ).toBeVisible();
+    await expect(page.getByTestId("student-disclaimer")).toHaveText(
+      copy("en", "student.disclaimer"),
+    );
+    await expect(page.getByTestId("list-choice-note")).toContainText(
+      copy("en", "app.welcome.yes"),
+    );
 
     await identifierInput(page, "en").fill(VALID_IPE);
     await expect(feedback(page)).toHaveText(validCopy("en", "IPE"));

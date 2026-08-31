@@ -17,6 +17,35 @@ export const STEP_SLUGS = ["student", "list", "result", "improve"] as const;
 export type StepSlug = (typeof STEP_SLUGS)[number];
 
 /**
+ * The welcome page — `app/[locale]/page.tsx`, the wizard's front door
+ * (MIGRATION.md §9b item 2).
+ *
+ * It is not a step: it carries no stepper, no Back/Continue bar and no number.
+ * Its two buttons write `listExists`, which is what `canEnterStep(1)` now
+ * requires, so it is also the step guard's redirect target while that choice is
+ * unmade. Locale-free like every path here — `Link`/`useRouter` from
+ * `@/i18n/navigation` add the `[locale]` prefix.
+ */
+export const WELCOME_PATH = "/";
+
+/**
+ * The completion page — `app/[locale]/(wizard)/finish/page.tsx` (§9b item 6).
+ *
+ * Deliberately *outside* the stepper: the rail keeps its four steps, and the
+ * page is reached only from the result step's "Finish" button. It lives in the
+ * `(wizard)` route group so it inherits `/meta` and the store, but
+ * `components/wizard/wizard-shell.tsx` draws it without the rail and without
+ * the Back/Continue bar, and guards it on a fresh simulation instead.
+ */
+export const FINISH_SLUG = "finish" as const;
+export const FINISH_PATH = `/${FINISH_SLUG}`;
+
+/** True for `/es/finish`, `/finish`, `/en/finish/` — the completion page. */
+export function isFinishPathname(pathname: string): boolean {
+  return pathname.split("/").filter(Boolean).at(-1) === FINISH_SLUG;
+}
+
+/**
  * Message ids, from `messages/{es,en}.json`.
  *
  * `steps.*` holds the short stepper labels; each step's own namespace holds its
@@ -40,8 +69,9 @@ export const STEP_TITLE_KEY = {
 } as const satisfies Record<StepSlug, string>;
 
 export const STEP_LEAD_KEY = {
-  // "Why do we ask for this?" — the reason the identifier is needed at all.
-  student: "student.why.body",
+  // Why the identifier is needed at all, in one sentence; the detail is in the
+  // "Why do we ask for this?" popover.
+  student: "student.lead",
   list: "list.order.preferenceHint",
   // "About this estimate" — the caveat the prototype shows beside the result.
   result: "app.aboutEstimate.body",
@@ -77,6 +107,25 @@ export function stepPath(slug: StepSlug): string {
 export function stepFromPathname(pathname: string): StepSlug | null {
   const last = pathname.split("/").filter(Boolean).at(-1);
   return last !== undefined && isStepSlug(last) ? last : null;
+}
+
+/**
+ * Does the step make its own onward choice, instead of the shell's Continue?
+ *
+ * Step 3 does, since MIGRATION.md §9b item 6: the result page ends with an
+ * explicit *I'm happy — finish* / *not happy — help me improve my list* pair
+ * (`components/result/result-actions.tsx`). A third, unlabelled Continue below
+ * them silently picked the "improve" branch, which is exactly the "you are not
+ * done yet" reading the product feedback asked us to remove — so the bar keeps
+ * Back and drops Continue there, as it already does on the terminal step.
+ *
+ * The gate itself is untouched: `canContinue(state, 3)` still means "a fresh
+ * simulation exists" and still guards step 4 through `canEnterStep(4)`. The
+ * choice is only rendered once the simulation succeeded, so there is no way
+ * forward from a failed or stale result either way.
+ */
+export function ownsForwardChoice(slug: StepSlug): boolean {
+  return slug === "result";
 }
 
 /** The slug a Continue press moves to, or `null` on the terminal step. */

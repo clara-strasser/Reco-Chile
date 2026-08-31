@@ -10,7 +10,8 @@
  * under "Detailed calculation for the reference order" in ties mode.
  *
  * The table scrolls inside its own container so eight columns never make the
- * page scroll sideways on a phone.
+ * page scroll sideways on a phone. The program column carries the commune and
+ * the region under the label (§9b item 4).
  *
  * Grouping follows the prototype column by column: the wish rank is a narrated
  * count (`{:,}`), while the MTB lottery rank, the seat count and the historical
@@ -33,6 +34,7 @@ import type { SimulationResponse } from "@/lib/api/types";
 import { formatBareInt, formatInt, formatPercent } from "@/lib/format";
 
 import { useResultLabels } from "./labels";
+import { ProgramLine } from "./program-line";
 
 export function DetailTable({
   simulation,
@@ -71,7 +73,12 @@ export function DetailTable({
               <TableCell className="text-right tabular-nums">
                 {formatInt(wish.wish_rank, locale)}
               </TableCell>
-              <TableCell>{labels.outcome(wish.program_label)}</TableCell>
+              <TableCell>
+                <ProgramLine
+                  name={labels.outcome(wish.program_label)}
+                  location={labels.location(wish.program_id)}
+                />
+              </TableCell>
               <TableCell className="text-right tabular-nums">
                 {formatBareInt(wish.lottery_number)}
               </TableCell>

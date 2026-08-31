@@ -2,16 +2,16 @@
   "title": "2. Armar y ordenar la lista de preferencias",
   "current": {
     "title": "Lista de preferencias actual",
-    "empty": "Todavía no hay ningún programa seleccionado. Agrega arriba la primera preferencia del estudiante.",
+    "empty": "Todavía no hay ningún programa seleccionado. Agrega arriba tu primera preferencia.",
     "count": "{n} programa(s) seleccionado(s)",
-    "useBuilder": "Usa el editor de abajo para ingresar directamente la lista existente."
+    "useBuilder": "Usa el editor de abajo para ingresar directamente tu lista actual."
   },
   "order": {
     "strictHint": "Ingresa los programas en orden estricto. El primer programa es la opción mejor clasificada, y la probabilidad final de cada opción inferior depende de no obtener las opciones anteriores.",
-    "preferenceHint": "Agrega los programas en el orden que la familia realmente prefiere.",
-    "reorderHint": "Usa ↑ y ↓ para reordenar el ranking estricto del estudiante.",
+    "preferenceHint": "Agrega los programas en el orden que realmente prefieres.",
+    "reorderHint": "Usa ↑ y ↓ para reordenar tu ranking estricto.",
     "howTitle": "¿Cómo se deben ingresar las preferencias?",
-    "howBody": "Orden estricto significa que cada programa tiene un ranking preciso. Las clases de equivalencia permiten que varios programas compartan el mismo grupo de preferencia cuando la familia los considera empatados."
+    "howBody": "Orden estricto significa que cada programa tiene un ranking preciso. Las clases de equivalencia permiten que varios programas compartan el mismo grupo de preferencia cuando los consideras empatados."
   },
   "card": {
     "detailsTitle": "Detalles del programa",

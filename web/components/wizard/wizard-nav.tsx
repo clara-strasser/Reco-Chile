@@ -6,7 +6,13 @@ import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Link, useRouter } from "@/i18n/navigation";
 
-import { nextSlug, previousSlug, stepPath, type StepSlug } from "./steps";
+import {
+  nextSlug,
+  ownsForwardChoice,
+  previousSlug,
+  stepPath,
+  type StepSlug,
+} from "./steps";
 
 /**
  * The `[← Back]                [Continue →]` bar of MIGRATION.md §4.1.
@@ -15,6 +21,10 @@ import { nextSlug, previousSlug, stepPath, type StepSlug } from "./steps";
  * scrolling past a long wish list. `-mx-4 px-4` bleeds the rule and the backdrop
  * to the edges of the locale layout's padded column while the buttons stay
  * aligned with the step content.
+ *
+ * Continue is dropped entirely on a step that states its own way forward:
+ * the terminal step 4, and — since §9b item 6 — step 3, whose result page ends
+ * with the explicit finish / improve choice. Back stays on both.
  *
  * Continue is a button rather than a link because it has two disabled states: a
  * disabled link is not focusable and would simply drop out of the tab order
@@ -30,11 +40,14 @@ export function WizardNav({
   /** `canContinue` for the live store state (§4.1, "Continue enabled when"). */
   canContinue: boolean;
   /**
-   * A request the step must finish before moving on is in flight — the result
-   * step's `/simulate` (MIGRATION.md §7, Phase 4). Continue keeps its label and
-   * its place in the tab order, swaps the arrow for a spinner and announces
-   * itself busy; it is disabled meanwhile so a second press cannot queue a
-   * second run.
+   * A request the step must finish before moving on is in flight. Continue
+   * keeps its label and its place in the tab order, swaps the arrow for a
+   * spinner and announces itself busy; it is disabled meanwhile so a second
+   * press cannot queue a second run.
+   *
+   * No step sets it today: the one candidate was the result step's `/simulate`
+   * (MIGRATION.md §7, Phase 4), which announces itself through its own loading
+   * skeleton instead and, since §9b item 6, has no Continue at all.
    */
   pending?: boolean;
 }) {
@@ -42,7 +55,9 @@ export function WizardNav({
   const router = useRouter();
 
   const back = previousSlug(slug);
-  const forward = nextSlug(slug);
+  // `null` on the terminal step and on any step that offers its own onward
+  // choice — step 3's explicit finish / improve pair (§9b item 6).
+  const forward = ownsForwardChoice(slug) ? null : nextSlug(slug);
 
   return (
     <div className="sticky bottom-0 -mx-4 mt-4 flex items-center justify-between gap-3 border-t border-border bg-background/95 px-4 py-3 backdrop-blur">

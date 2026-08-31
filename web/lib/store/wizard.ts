@@ -65,6 +65,7 @@ export type MoveTarget = "up" | "down" | number;
 export type WizardState = {
   /** RUN/IPE — memory only, never persisted, never logged (§4.5). */
   studentId: string;
+  /** The welcome page's answer; `null` = not asked yet, which locks step 1. */
   listExists: boolean | null;
   useEquivalenceClasses: boolean;
   filters: ProgramFilters;
@@ -116,6 +117,17 @@ export type WizardState = {
    * shell's, so a shell-side reset would race with the step that just set it.
    */
   stepBusy: boolean;
+  /**
+   * Has `hydrateWizardStore()` finished reading `sessionStorage` back?
+   *
+   * Memory-only, never persisted, and `false` on every fresh document. It
+   * exists because the persisted slices arrive one effect *after* the tree
+   * mounts, and the step guard now gates on one of them (`listExists`, §9b):
+   * without this flag a reload of `/es/student` would see the empty default,
+   * decide the welcome question was never answered, and bounce a family that
+   * had answered it. Whoever redirects on store state must wait for this.
+   */
+  hydrated: boolean;
 };
 
 export type WizardActions = {
@@ -331,6 +343,7 @@ export function initialWizardState(): WizardState {
     recommendationsAddedNotice: 0,
     pendingNavigation: null,
     stepBusy: false,
+    hydrated: false,
   };
 }
 
@@ -360,7 +373,10 @@ export const useWizardStore = create<WizardStore>()(
       },
 
       setListExists: (listExists) => {
-        // Pure UI mode: the list itself and the simulation survive.
+        // The welcome page's answer (§9b item 2). It selects a UI branch — step
+        // 2 shows the filter panel only for "No, help me build it" — so the
+        // list itself and the simulation survive a change of mind. `null` puts
+        // the family back in front of the welcome question (`canEnterStep(1)`).
         set({ listExists });
       },
 
@@ -547,7 +563,11 @@ export const useWizardStore = create<WizardStore>()(
       },
 
       reset: () => {
-        set(initialWizardState());
+        // `hydrated` is a fact about this document, not about the wizard: the
+        // session has been read whatever the family does next, and resetting it
+        // to `false` would put the step guard back in its waiting state for
+        // good.
+        set({ ...initialWizardState(), hydrated: get().hydrated });
       },
     }),
     {
@@ -558,7 +578,8 @@ export const useWizardStore = create<WizardStore>()(
       // `recommendationsAddedNotice`, `pendingNavigation` and `stepBusy` stay
       // out too: the first is a fact about the live API, the others are
       // in-flight UI state that must not survive a reload — a persisted
-      // `pendingNavigation` would silently disable the step guard.
+      // `pendingNavigation` would silently disable the step guard, and a
+      // persisted `hydrated` would claim the session was read before it was.
       partialize: (state): PersistedWizardState => ({
         wishes: state.wishes,
         listExists: state.listExists,
@@ -578,7 +599,13 @@ export const useWizardStore = create<WizardStore>()(
  * inside the wizard layout — never during render.
  */
 export function hydrateWizardStore(): Promise<void> {
-  return Promise.resolve(useWizardStore.persist.rehydrate());
+  return Promise.resolve(useWizardStore.persist.rehydrate()).then(() => {
+    // After the merge, never before: `hydrated` is the signal that the store
+    // now reflects the session, which is what the step guard waits for.
+    if (!useWizardStore.getState().hydrated) {
+      useWizardStore.setState({ hydrated: true });
+    }
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -600,6 +627,22 @@ export function isStudentIdValid(
   state: Pick<WizardState, "studentId">,
 ): boolean {
   return isValidStudentIdentifier(state.studentId);
+}
+
+/**
+ * Has the welcome page's question been answered? (MIGRATION.md §9b item 2.)
+ *
+ * `listExists === null` means "not asked yet", and since the two welcome
+ * buttons are the only way to answer it, an unanswered choice means the family
+ * has not come through the front door at all — a deep link straight to
+ * `/es/student`, or a `reset()`. That is what makes it the *entry* condition of
+ * step 1 rather than a Continue condition: the guard sends them to
+ * `WELCOME_PATH` instead of showing a step whose question was skipped.
+ *
+ * The answer is persisted (§4.2), so a reload keeps the family where they were.
+ */
+export function hasListChoice(state: Pick<WizardState, "listExists">): boolean {
+  return state.listExists !== null;
 }
 
 /**
@@ -649,7 +692,8 @@ export function canContinue(
 }
 
 /** May the user open `step`? Cumulative: every earlier gate must hold too, so
- *  a deep link to a locked step can be redirected. */
+ *  a deep link to a locked step can be redirected. Step 1 is no longer
+ *  unconditional — it needs the welcome page's answer (`hasListChoice`). */
 export function canEnterStep(
   state: WizardState,
   step: WizardStep,
@@ -657,9 +701,12 @@ export function canEnterStep(
 ): boolean {
   switch (step) {
     case 1:
-      return true;
+      // The welcome choice, not "always" (§9b item 2): step 1 no longer asks
+      // the question, so entering it without an answer would strand the family
+      // in a wizard branch nobody chose.
+      return hasListChoice(state);
     case 2:
-      return canContinue(state, 1, options);
+      return canEnterStep(state, 1, options) && canContinue(state, 1, options);
     case 3:
       return canEnterStep(state, 2, options) && canContinue(state, 2, options);
     case 4:
@@ -672,12 +719,14 @@ export function canEnterStep(
 export function lastAllowedStep(
   state: WizardState,
   options: StepGateOptions = {},
-): WizardStep {
-  const steps: WizardStep[] = [4, 3, 2];
+): WizardStep | null {
+  const steps: WizardStep[] = [4, 3, 2, 1];
   for (const step of steps) {
     if (canEnterStep(state, step, options)) return step;
   }
-  return 1;
+  // Not even step 1: the welcome question is unanswered, so the redirect target
+  // is the welcome page (`WELCOME_PATH`), which is not a step.
+  return null;
 }
 
 /** Curried forms for `useWizardStore(selectCanContinue(2, { maxOrders }))`. */

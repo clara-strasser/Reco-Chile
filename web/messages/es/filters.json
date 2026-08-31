@@ -15,7 +15,7 @@
   },
   "more": {
     "trigger": "Más filtros: jornada, PIE, PACE, costos y otras características",
-    "hint": "Deja un filtro vacío cuando esa característica no sea esencial para la familia."
+    "hint": "Deja un filtro vacío cuando esa característica no sea esencial para ti."
   },
   "fields": {
     "specialty": {
@@ -73,6 +73,7 @@
     "inputPlaceholder": "Establecimiento, comuna o detalles del programa",
     "add": "Agregar",
     "added": "Ya está en la lista",
+    "locationUnknown": "Comuna y región sin información",
     "loading": "Buscando programas…",
     "empty": "Ningún programa coincide con la búsqueda.",
     "error": "No se pudieron cargar los programas.",

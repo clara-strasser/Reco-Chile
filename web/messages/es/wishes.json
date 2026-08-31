@@ -10,7 +10,7 @@
     "short": "Grupo",
     "forProgram": "Grupo de preferencia de {program}",
     "hint": "Asigna el mismo número de grupo de preferencia a los programas considerados equivalentes. El grupo 1 se prefiere al grupo 2, etc.",
-    "longHint": "Usa el mismo número de grupo de preferencia para los programas que el estudiante considera empatados. Los números más bajos son preferidos. La app probará todos los órdenes posibles dentro de cada grupo empatado, para que las familias vean si el orden interno exacto cambia el resultado previsto."
+    "longHint": "Usa el mismo número de grupo de preferencia para los programas que consideras empatados. Los números más bajos son preferidos. La app probará todos los órdenes posibles dentro de cada grupo empatado, para que veas si el orden interno exacto cambia el resultado previsto."
   },
   "card": {
     "moveUp": "Subir",
@@ -22,6 +22,7 @@
     "detailsTrigger": "Ver detalles del programa",
     "detailsTitle": "Detalles del programa",
     "detailsFor": "Características de {program} según los datos de calibración cargados.",
+    "locationUnknown": "Comuna y región sin información",
     "loading": "Cargando el programa…",
     "unavailable": "Este programa ya no está disponible en los datos cargados."
   },
@@ -34,7 +35,7 @@
     "onDragCancel": "Se canceló el reordenamiento. {program} volvió a la preferencia {position} de {total}."
   },
   "priorities": {
-    "title": "¿El estudiante tiene prioridad en este establecimiento?",
+    "title": "¿Tienes prioridad en este establecimiento?",
     "forProgram": "Prioridades en {program}",
     "hint": "Marca únicamente las situaciones que correspondan a este establecimiento. El SAE reconoce los cuatro criterios de prioridad que aparecen a continuación.",
     "labels": {
@@ -45,11 +46,11 @@
       "alreadyRegistered": "Ya matriculado/a"
     },
     "descriptions": {
-      "sibling": "Tiene un hermano o hermana matriculado/a en el establecimiento",
-      "student": "Tiene la condición de estudiante prioritario para este establecimiento",
-      "parentCivilServant": "Es hijo/a de un funcionario/a del establecimiento",
-      "exStudent": "Fue estudiante del establecimiento y no fue expulsado/a",
-      "alreadyRegistered": "El estudiante ya está matriculado en este establecimiento"
+      "sibling": "Tienes un hermano o hermana matriculado/a en el establecimiento",
+      "student": "Tienes la condición de estudiante prioritario para este establecimiento",
+      "parentCivilServant": "Eres hijo/a de un funcionario/a del establecimiento",
+      "exStudent": "Fuiste estudiante del establecimiento y no fuiste expulsado/a",
+      "alreadyRegistered": "Ya estás matriculado/a en este establecimiento"
     },
     "alreadyRegisteredNote": "La matrícula actual se muestra por separado porque no es uno de los cuatro criterios de prioridad SAE.",
     "none": "Sin prioridad declarada para este programa",

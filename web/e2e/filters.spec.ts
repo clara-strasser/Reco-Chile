@@ -30,6 +30,9 @@ const REGION = "Región de Los Ríos";
 const SPECIALTY = "Food services";
 /** Any region other than {@link REGION} — used for the preserved-wish note. */
 const OTHER_REGION = "Región de Arica y Parinacota";
+/** Where {@link findSameNamePair} looks for a repeated school name first.
+ *  Nothing depends on this term matching — it is a shortcut, not a fixture. */
+const SAME_NAME_SEED = "Carrera Pinto";
 
 const filtersCopy = es.filters as unknown as {
   fields: Record<string, { label: string }>;
@@ -48,10 +51,19 @@ async function apiTotal(
   return (await apiPrograms(request, params)).total_matched;
 }
 
+/** The fields of `ProgramSummary` this spec reads back from the UI. */
+type Program = {
+  program_id: string;
+  program_label: string;
+  school_name: string;
+  school_commune: string;
+  region: string;
+};
+
 async function apiPrograms(
   request: APIRequestContext,
   params: Record<string, string | string[]>,
-): Promise<{ total_matched: number; items: Array<{ program_id: string }> }> {
+): Promise<{ total_matched: number; items: Program[] }> {
   const search = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     for (const item of Array.isArray(value) ? value : [value]) {
@@ -62,15 +74,59 @@ async function apiPrograms(
   expect(response.ok()).toBeTruthy();
   return (await response.json()) as {
     total_matched: number;
-    items: Array<{ program_id: string }>;
+    items: Program[];
   };
 }
 
-/** Step 1 with a valid RUN and "No — help me build it", landing on step 2. */
+/**
+ * Two programs whose schools share a name but sit in different communes.
+ *
+ * That is the case MIGRATION.md §9b.4 is about: "Liceo Ignacio Carrera Pinto"
+ * is a school in San Vicente and a *different* school in Frutillar, and 91
+ * school names in the current data repeat across communes. The pair is looked
+ * up at run time rather than frozen here, so the test keeps testing the same
+ * property when the calibration CSVs change; the seed query only decides where
+ * to look first. `null` means this data set has no such pair — then the test
+ * falls back to asserting the line on an ordinary row.
+ */
+async function findSameNamePair(
+  request: APIRequestContext,
+): Promise<[Program, Program] | null> {
+  const attempts: Record<string, string>[] = [
+    { q: SAME_NAME_SEED, limit: "1000" },
+    { limit: "1000" },
+  ];
+  for (const params of attempts) {
+    const { items } = await apiPrograms(request, params);
+    const bySchool = new Map<string, Program[]>();
+    for (const item of items) {
+      bySchool.set(item.school_name, [
+        ...(bySchool.get(item.school_name) ?? []),
+        item,
+      ]);
+    }
+    for (const programs of bySchool.values()) {
+      const first = programs[0];
+      const other = programs.find(
+        (candidate) => candidate.school_commune !== first.school_commune,
+      );
+      if (other) return [first, other];
+    }
+  }
+  return null;
+}
+
+/**
+ * Welcome → step 1 with a valid RUN → step 2, on the guided branch.
+ *
+ * "No — help me build it" is answered on the welcome page since §9b item 2; it
+ * is what makes step 2 render the filter panel at all.
+ */
 async function openBuilder(page: Page) {
-  await page.goto("/es/student");
+  await page.goto("/es");
+  await page.getByTestId("welcome-no").click();
+  await page.waitForURL("**/es/student");
   await page.getByLabel(es.student.idLabel).fill(VALID_RUN);
-  await page.locator("#list-status-no").click();
   await page.getByTestId("wizard-continue").click();
   await page.waitForURL("**/es/list");
   await expect(page.getByTestId("filter-panel")).toBeVisible();
@@ -213,9 +269,68 @@ test.describe("step 2 — filters and program search", () => {
     await expect(page.getByTestId("wish-card")).toHaveCount(1);
   });
 
+  test("every combobox row names its commune and region", async ({
+    page,
+    request,
+  }) => {
+    // MIGRATION.md §9b.4: a program has to be unambiguous wherever it is shown.
+    // The server-side label appends the commune only when the school *name*
+    // collides and never appends the region, so the second line is the only
+    // thing that separates two same-named schools — and the only thing that
+    // tells you which region a school is in at all.
+    const pair = await findSameNamePair(request);
+
+    await openBuilder(page);
+    await page.getByTestId("program-search-trigger").click();
+    if (pair)
+      await page.getByTestId("program-search-input").fill(pair[0].school_name);
+
+    const options = page.getByTestId("program-search-option");
+    await expect(options.first()).toBeVisible();
+    const locations = page.getByTestId("program-search-option-location");
+    await expect(locations).toHaveCount(await options.count());
+
+    // Not one row may be showing a bare label.
+    for (const line of await locations.allInnerTexts()) {
+      expect(line.trim()).not.toBe("");
+    }
+
+    if (pair) {
+      for (const program of pair) {
+        const option = page.locator(
+          `[data-testid="program-search-option"][data-program-id="${program.program_id}"]`,
+        );
+        await expect(
+          option.getByTestId("program-search-option-location"),
+        ).toHaveText(`${program.school_commune} · ${program.region}`);
+        // Screen-reader users get the same disambiguation by ear.
+        await expect(option).toHaveAccessibleName(
+          new RegExp(escapeRegExp(program.school_commune)),
+        );
+      }
+      // The pair really is the ambiguous case: same school name, two communes.
+      expect(pair[0].school_name).toBe(pair[1].school_name);
+      expect(pair[0].school_commune).not.toBe(pair[1].school_commune);
+
+      // The trigger reads the choice back with its location, so the program is
+      // still identifiable at the moment Add is pressed.
+      await page
+        .locator(
+          `[data-testid="program-search-option"][data-program-id="${pair[0].program_id}"]`,
+        )
+        .click();
+      await expect(
+        page.getByTestId("program-search-selected-location"),
+      ).toHaveText(`${pair[0].school_commune} · ${pair[0].region}`);
+    }
+  });
+
   test("the program details list shows the prototype's ten rows", async ({
     page,
+    request,
   }) => {
+    const first = (await apiPrograms(request, { limit: "1" })).items[0];
+
     await openBuilder(page);
 
     await page.getByTestId("program-search-trigger").click();
@@ -239,6 +354,15 @@ test.describe("step 2 — filters and program search", () => {
         .filter({ hasText: "PIE" })
         .first(),
     ).toContainText(/Con PIE|Sin PIE|Sin información/);
+
+    // The sheet is the long form of the card's location line (§9b.4): commune
+    // and region are rows of their own, with the values the API returned.
+    await expect(details.locator('[data-field="commune"]')).toContainText(
+      first.school_commune,
+    );
+    await expect(details.locator('[data-field="region"]')).toContainText(
+      first.region,
+    );
   });
 
   test("the filter panel is keyboard operable", async ({ page }) => {

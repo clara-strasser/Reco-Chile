@@ -15,16 +15,24 @@
  * list already exists, the panel is not rendered and the search stays global.
  * Pass `filters` explicitly to override that.
  *
- * Selecting is separate from adding, exactly as in the prototype: the family
- * picks a program, reads it back on the trigger, then presses Add. Programs
- * already on the list stay visible but are disabled — seeing that a school is
- * already chosen answers the question faster than its absence would.
+ * Selecting is separate from adding, exactly as in the prototype: you pick a
+ * program, read it back on the trigger, then press Add. Programs already on the
+ * list stay visible but are disabled — seeing that a school is already chosen
+ * answers the question faster than its absence would.
+ *
+ * Every row — and the trigger's read-back — carries `commune · region` under
+ * the label (MIGRATION.md §9b.4). School names repeat all over Chile, and the
+ * server-side label only disambiguates by commune when the *name* itself
+ * collides, so without that second line two different schools can look
+ * identical in the list. The commune is part of each option's accessible name
+ * too, so the choice is as unambiguous by ear as it is by eye.
  */
 
 import { useMemo, useState } from "react";
 import { useTranslations } from "next-intl";
 import { ChevronsUpDownIcon, PlusIcon } from "lucide-react";
 
+import { formatProgramLocation } from "@/components/list/program-location";
 import { Button } from "@/components/ui/button";
 import {
   Command,
@@ -87,6 +95,11 @@ export function ProgramSearch({
     enabled: open,
   });
 
+  /** `commune · region`, never blank — a program with neither says so. */
+  const locationOf = (program: ProgramSummary): string =>
+    formatProgramLocation(program.school_commune, program.region) ||
+    t("search.locationUnknown");
+
   const excluded = useMemo(() => new Set(excludeIds), [excludeIds]);
   const selectedExcluded =
     selected !== null && excluded.has(selected.program_id);
@@ -121,8 +134,24 @@ export function ProgramSearch({
               disabled={disabled}
               className="h-auto min-w-0 flex-1 justify-between py-2 text-left font-normal whitespace-normal"
             >
-              <span id="program-search-value" className="min-w-0 flex-1">
-                {selected?.program_label ?? t("search.placeholder")}
+              <span
+                id="program-search-value"
+                className="flex min-w-0 flex-1 flex-col gap-0.5"
+              >
+                {selected === null ? (
+                  t("search.placeholder")
+                ) : (
+                  <>
+                    <span>{selected.program_label}</span>
+                    {/* The read-back must be as unambiguous as the row was. */}
+                    <span
+                      data-testid="program-search-selected-location"
+                      className="text-xs text-muted-foreground"
+                    >
+                      {locationOf(selected)}
+                    </span>
+                  </>
+                )}
               </span>
               <ChevronsUpDownIcon
                 aria-hidden
@@ -175,11 +204,22 @@ export function ProgramSearch({
                   <CommandGroup>
                     {items.map((program) => {
                       const isExcluded = excluded.has(program.program_id);
+                      const location = locationOf(program);
                       return (
                         <CommandItem
                           key={program.program_id}
                           value={program.program_id}
                           disabled={isExcluded}
+                          // Two schools can share a label; the option's
+                          // accessible name must carry the commune and region
+                          // that tell them apart, not only its visible rows.
+                          aria-label={[
+                            program.program_label,
+                            location,
+                            isExcluded ? t("search.added") : null,
+                          ]
+                            .filter((part) => part)
+                            .join(" · ")}
                           data-testid="program-search-option"
                           data-program-id={program.program_id}
                           data-excluded={isExcluded ? "true" : "false"}
@@ -196,8 +236,11 @@ export function ProgramSearch({
                             <span className="text-sm font-medium text-wrap">
                               {program.program_label}
                             </span>
-                            <span className="text-xs text-wrap text-muted-foreground">
-                              {program.school_commune} · {program.region}
+                            <span
+                              data-testid="program-search-option-location"
+                              className="text-xs text-wrap text-muted-foreground"
+                            >
+                              {location}
                               {isExcluded ? ` · ${t("search.added")}` : ""}
                             </span>
                           </span>

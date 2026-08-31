@@ -159,7 +159,9 @@ async function openImprove(page: Page): Promise<void> {
     timeout: 60_000,
   });
 
-  await page.getByTestId("wizard-continue").click();
+  // Step 3 has no generic Continue since §9b item 6 — the way to step 4 is the
+  // explicit "not happy, help me improve my list" half of the result's choice.
+  await page.getByTestId("result-improve").click();
   await page.waitForURL("**/es/improve");
 }
 

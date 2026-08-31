@@ -26,6 +26,15 @@ import en from "../messages/en";
  * twelve-wish scarce list would test the search box, not the result, and the
  * RUN/IPE is deliberately *not* seedable (it is memory-only), so it is always
  * typed into the step-1 field, exactly as a family would.
+ *
+ * Product feedback round 1 (MIGRATION.md §9b, items 5–6) reshaped what step 3
+ * *shows* without touching a single number: the attention-level alerts and the
+ * threshold disclosure are gone, and the page opens with two figures — the
+ * overall chance of being assigned (`1 − unmatched_risk`) and the most likely
+ * outcome. The parity assertions below therefore moved onto the new elements;
+ * they still compare against the fixtures, and `assignment-chance` is asserted
+ * as `formatPercent(1 − <fixture unmatched_risk>)` rather than against a
+ * second, independently rendered number.
  */
 
 // --- Fixtures --------------------------------------------------------------
@@ -117,6 +126,39 @@ const SIX_IN_ONE_GROUP: Fixture = {
   expected: {},
 };
 
+/**
+ * The band where "most likely outcome" and "the engine's unmatched alert"
+ * disagree: `unmatched_risk` at or above `hard_unmatched_threshold` (2.7%) —
+ * so `wish_list.predicted_outcome_from_choices` answers `Unmatched` — while a
+ * school on the list is more likely than that.
+ *
+ * `strict_04` (54.8%) cannot tell the two apart: there `Unmatched` really is
+ * the most likely outcome, so a card driven by `predicted_outcome` and a card
+ * driven by `outcomes[0]` say the same thing. This fixture is the first ten
+ * wishes of `strict_05`, which lands at 33.9% unmatched against a 42.4% school.
+ *
+ * Truncating a golden list is sound arithmetic, not a new baseline: a wish's
+ * `choice_assignment_probability` and the cumulative unavailability after it
+ * depend only on the wishes *above* it (§6, `README.md`), so the first ten rows
+ * of `strict_05` are exactly the engine's answer for a ten-wish list. The test
+ * still asserts the band against `/meta` before it asserts anything else, so a
+ * data change that moves these numbers fails loudly instead of passing
+ * vacuously.
+ */
+const MID_BAND: Fixture = (() => {
+  const base = golden("strict_05_twelve_wishes_already_registered");
+  const choices = (base.expected.choices ?? []).slice(0, 10);
+  return {
+    name: "unmatched_below_the_top_school",
+    inputs: { ...base.inputs, wishes: base.inputs.wishes.slice(0, 10) },
+    expected: {
+      choices,
+      unmatched_risk:
+        choices[choices.length - 1].cumulative_unavailable_after_choice,
+    },
+  };
+})();
+
 /** 6! — what `count_equivalence_orders` reports for one group of six. */
 const SIX_IN_ONE_GROUP_ORDERS = 720;
 
@@ -159,6 +201,75 @@ function unmatchedRisk(fixture: Fixture): number {
 
 function referenceChoices(fixture: Fixture): Choice[] {
   return fixture.expected.choices ?? fixture.expected.reference_choices ?? [];
+}
+
+/** The 1-based position of a program in the reference order — the `wish_rank`
+ *  the headline prints as "your preference #n". */
+function wishRankOf(fixture: Fixture, program: string): number {
+  const index = referenceChoices(fixture).findIndex(
+    (choice) => choice.program === program,
+  );
+  expect(index, `${program} is not in ${fixture.name}`).toBeGreaterThanOrEqual(
+    0,
+  );
+  return index + 1;
+}
+
+/** The final chance the engine gives one program in the reference order. */
+function finalChanceOf(fixture: Fixture, program: string): number {
+  const choice = referenceChoices(fixture).find(
+    (item) => item.program === program,
+  );
+  expect(choice, `${program} is not in ${fixture.name}`).toBeDefined();
+  return choice!.choice_assignment_probability;
+}
+
+/** The most likely *program* of a fixture — `outcomes[0]` whenever a school is
+ *  more likely than staying unmatched. */
+function topProgram(fixture: Fixture): Choice {
+  const best = [...referenceChoices(fixture)].sort(
+    (a, b) => b.choice_assignment_probability - a.choice_assignment_probability,
+  )[0];
+  expect(best, `${fixture.name} has no choices`).toBeDefined();
+  return best;
+}
+
+/** One program's display fields, straight from the API the page reads. */
+async function programOf(
+  page: Page,
+  programId: string,
+): Promise<{ program_label: string; school_commune: string; region: string }> {
+  const response = await page.request.get(
+    `/api/programs/${encodeURIComponent(programId)}`,
+  );
+  expect(response.ok(), `GET /programs/${programId}`).toBeTruthy();
+  return response.json();
+}
+
+/**
+ * The headline's first figure, asserted for any fixture: the overall chance of
+ * being assigned is `1 − unmatched_risk`, formatted like every other percentage.
+ */
+async function expectHeadlineChance(
+  page: Page,
+  fixture: Fixture,
+  locale: "es" | "en" = "es",
+): Promise<void> {
+  await expect(page.getByTestId("assignment-chance")).toHaveText(
+    formatPercent(1 - unmatchedRisk(fixture), locale),
+  );
+  await expect(page.getByTestId("unmatched-risk")).toHaveText(
+    formatPercent(unmatchedRisk(fixture), locale),
+  );
+}
+
+/** Nothing on the page may reintroduce the attention levels (§9b item 5). */
+async function expectNoAttentionLevels(page: Page): Promise<void> {
+  await expect(page.getByTestId("attention-alert")).toHaveCount(0);
+  // The removed copy, in the words it used: the three alerts, the "How are the
+  // attention levels defined?" disclosure and every threshold sentence.
+  await expect(page.getByText(/nivel(es)? de atención/i)).toHaveCount(0);
+  await expect(page.getByText(/umbral/i)).toHaveCount(0);
 }
 
 /** The verdict `_equivalence_verdict` computes for a fixture, given /meta's
@@ -250,16 +361,9 @@ test.describe("result step — strict list", () => {
   }) => {
     await openResult(page, STRICT);
 
-    const risk = page.getByTestId("unmatched-risk");
-    await expect(risk).toHaveText(formatPercent(unmatchedRisk(STRICT), "es"));
-    // 54.8% is above the hard threshold, so the prototype shows "high".
-    await expect(page.getByTestId("attention-alert")).toHaveAttribute(
-      "data-level",
-      "high",
-    );
-    await expect(page.getByTestId("attention-alert")).toHaveText(
-      es.result.attention.high,
-    );
+    // The headline figure is the positive side of the same number.
+    await expectHeadlineChance(page, STRICT);
+    await expectNoAttentionLevels(page);
 
     for (const choice of referenceChoices(STRICT)) {
       await expect(
@@ -273,6 +377,136 @@ test.describe("result step — strict list", () => {
     await expect(page.getByTestId("final-chance")).toHaveCount(
       STRICT.inputs.wishes.length,
     );
+  });
+
+  test("the headline says plainly that no listed program is likely", async ({
+    page,
+  }) => {
+    // strict_04's unmatched risk is 54.8%, so `predicted_outcome_from_choices`
+    // answers `Unmatched` — the second headline card then states the outcome in
+    // words and gives its probability, with no alert styling of any kind.
+    await openResult(page, STRICT);
+
+    await expectHeadlineChance(page, STRICT);
+    await expect(page.getByTestId("predicted-unmatched")).toHaveText(
+      es.result.headline.unmatchedBody,
+    );
+    await expect(page.getByTestId("predicted-chance")).toHaveText(
+      copy(es.result.headline.outcomeChance, {
+        chance: formatPercent(unmatchedRisk(STRICT), "es"),
+      }),
+    );
+    // No school is named, and no rank: there is no predicted school here.
+    await expect(page.getByTestId("predicted-school")).toHaveCount(0);
+    await expect(page.getByTestId("predicted-rank")).toHaveCount(0);
+
+    // The caption the feedback explicitly asked to keep.
+    await expect(page.getByTestId("estimate-note")).toHaveText(
+      es.result.explain.percentagesBody,
+    );
+  });
+
+  test("names the most likely outcome, not the unmatched alert", async ({
+    page,
+  }) => {
+    // The card must answer "what is most likely", which is `outcomes[0]`.
+    // `predicted_outcome` answers a different question — it flips to
+    // `Unmatched` at the 2.7% hard threshold, as a warning — and driving the
+    // card from it makes the page contradict itself in this band: "96% chance
+    // of a place" over "most likely you get none of them", above a podium that
+    // opens with a school at 42%.
+    await openResult(page, MID_BAND);
+    const thresholds = await meta(page);
+    const risk = unmatchedRisk(MID_BAND);
+    const top = topProgram(MID_BAND);
+
+    // The band itself — without it this test proves nothing.
+    expect(risk).toBeGreaterThanOrEqual(thresholds.hard_unmatched_threshold);
+    expect(risk).toBeLessThan(top.choice_assignment_probability);
+    expect(
+      predictedOutcome(MID_BAND, thresholds.hard_unmatched_threshold),
+    ).toBe(es.enums.outcome.Unmatched);
+
+    await expectHeadlineChance(page, MID_BAND);
+    await expect(page.getByTestId("predicted-unmatched")).toHaveCount(0);
+    await expect(page.getByTestId("predicted-school")).toHaveText(top.program);
+    await expect(page.getByTestId("predicted-rank")).toHaveText(
+      copy(es.result.headline.preferenceRank, {
+        rank: formatInt(wishRankOf(MID_BAND, top.program), "es"),
+      }),
+    );
+    await expect(page.getByTestId("predicted-chance")).toHaveText(
+      copy(es.result.headline.outcomeChance, {
+        chance: formatPercent(top.choice_assignment_probability, "es"),
+      }),
+    );
+
+    // …and the list right below it agrees, which is the contradiction the card
+    // used to create.
+    await expect(page.getByTestId("outcome-item").first()).toContainText(
+      top.program,
+    );
+  });
+
+  test("names commune and region wherever it lists a program (§9b item 4)", async ({
+    page,
+  }) => {
+    await openResult(page, MID_BAND);
+    const top = topProgram(MID_BAND);
+    const program = await programOf(page, top.program_id);
+    const location = `${program.school_commune} · ${program.region}`;
+
+    // 1. the headline's most likely school
+    await expect(page.getByTestId("predicted-location")).toHaveText(location);
+
+    // 2. the outcome podium
+    await expect(page.getByTestId("outcome-item").first()).toContainText(
+      location,
+    );
+
+    // 3. the family table
+    const familyRow = page
+      .getByTestId("family-table")
+      .getByRole("row")
+      .filter({ hasText: top.program });
+    await expect(familyRow).toContainText(location);
+
+    // 4. the detailed calculation
+    await page.getByRole("button", { name: es.result.detail.trigger }).click();
+    const detailRow = page
+      .getByTestId("detail-table")
+      .getByRole("row")
+      .filter({ hasText: top.program });
+    await expect(detailRow).toContainText(location);
+  });
+
+  test("offers the finish / improve choice instead of a bare Continue", async ({
+    page,
+  }) => {
+    await openResult(page, STRICT);
+
+    const finish = page.getByTestId("result-finish");
+    await expect(finish).toContainText(es.result.next.finish);
+    await expect(finish).toHaveAttribute("href", "/es/finish");
+
+    const improve = page.getByTestId("result-improve");
+    await expect(improve).toContainText(es.result.next.improve);
+    await expect(improve).toHaveAttribute("href", "/es/improve");
+
+    // …and *instead of*: the shell's unlabelled Continue used to sit below the
+    // choice and silently take the improve branch (§9b item 6). Back stays.
+    await expect(page.getByTestId("wizard-continue")).toHaveCount(0);
+    await expect(page.getByTestId("wizard-back")).toBeVisible();
+
+    // Both destinations exist and are reachable from here.
+    await improve.click();
+    await page.waitForURL("**/es/improve");
+    await page.goBack();
+    await page.getByTestId("result-finish").click();
+    await page.waitForURL("**/es/finish");
+    // …and the wizard leaves them there: the finish page is the end of the
+    // flow, not a step the guard bounces back to the result.
+    await expect(page).toHaveURL(/\/es\/finish$/);
   });
 
   test("the podium, the detail table and the outcome order match the engine", async ({
@@ -317,11 +551,12 @@ test.describe("result step — strict list", () => {
   test("formats the same number in English", async ({ page }) => {
     await openResult(page, STRICT, "en");
 
-    await expect(page.getByTestId("unmatched-risk")).toHaveText(
-      formatPercent(unmatchedRisk(STRICT), "en"),
-    );
+    await expectHeadlineChance(page, STRICT, "en");
     expect(formatPercent(unmatchedRisk(STRICT), "en")).toBe("54.8%");
     expect(formatPercent(unmatchedRisk(STRICT), "es")).toBe("54,8%");
+    await expect(page.getByTestId("predicted-unmatched")).toHaveText(
+      en.result.headline.unmatchedBody,
+    );
   });
 
   test("keeps the RUN out of storage and out of the URL (§4.5)", async ({
@@ -350,9 +585,24 @@ test.describe("result step — equivalence classes", () => {
     await openResult(page, EQUIV_STABLE);
     const thresholds = await meta(page);
 
-    await expect(page.getByTestId("unmatched-risk")).toHaveText(
-      formatPercent(unmatchedRisk(EQUIV_STABLE), "es"),
+    await expectHeadlineChance(page, EQUIV_STABLE);
+    await expectNoAttentionLevels(page);
+
+    // Here the predicted outcome is a program, so the headline names the school
+    // and which of *your* preferences it is.
+    const predicted = EQUIV_STABLE.expected.distinct_outcomes![0];
+    await expect(page.getByTestId("predicted-school")).toHaveText(predicted);
+    await expect(page.getByTestId("predicted-rank")).toHaveText(
+      copy(es.result.headline.preferenceRank, {
+        rank: formatInt(wishRankOf(EQUIV_STABLE, predicted), "es"),
+      }),
     );
+    await expect(page.getByTestId("predicted-chance")).toHaveText(
+      copy(es.result.headline.outcomeChance, {
+        chance: formatPercent(finalChanceOf(EQUIV_STABLE, predicted), "es"),
+      }),
+    );
+    await expect(page.getByTestId("predicted-unmatched")).toHaveCount(0);
 
     const verdict = page.getByTestId("equivalence-verdict");
     await expect(verdict).toHaveAttribute(
@@ -477,6 +727,9 @@ test.describe("result step — equivalence classes", () => {
     await openResult(page, EQUIV_SHIFT);
     const thresholds = await meta(page);
 
+    await expectHeadlineChance(page, EQUIV_SHIFT);
+    await expectNoAttentionLevels(page);
+
     const chances = EQUIV_SHIFT.expected.variants!.map(
       (variant) => variant.predicted_outcome_final_chance,
     );
@@ -523,6 +776,9 @@ test.describe("result step — equivalence classes", () => {
   }) => {
     await openResult(page, EQUIV_OUTCOME_CHANGES);
     const thresholds = await meta(page);
+
+    await expectHeadlineChance(page, EQUIV_OUTCOME_CHANGES);
+    await expectNoAttentionLevels(page);
 
     const verdict = page.getByTestId("equivalence-verdict");
     await expect(verdict).toHaveAttribute(
@@ -619,8 +875,11 @@ test.describe("result step — failures", () => {
         .replace("{n}", formatInt(40320, "es"))
         .replace("{limit}", formatInt(10000, "es")),
     );
-    // Continue stays closed while the step has no fresh result (§4.1).
-    await expect(page.getByTestId("wizard-continue")).toBeDisabled();
+    // No way onward while the step has no fresh result (§4.1): the finish /
+    // improve choice is rendered only beside a result, and step 3 has no
+    // generic Continue to fall back on since §9b item 6.
+    await expect(page.getByTestId("result-actions")).toHaveCount(0);
+    await expect(page.getByTestId("wizard-continue")).toHaveCount(0);
 
     failing = false;
     await page.getByTestId("result-retry").click();
@@ -628,7 +887,7 @@ test.describe("result step — failures", () => {
       formatPercent(unmatchedRisk(STRICT), "es"),
     );
     await expect(page.getByTestId("result-error")).toHaveCount(0);
-    await expect(page.getByTestId("wizard-continue")).toBeEnabled();
+    await expect(page.getByTestId("result-actions")).toBeVisible();
   });
 });
 
@@ -707,3 +966,80 @@ const STUBBED_TWO_ORDER_RESPONSE = {
     ],
   },
 } as const;
+
+/**
+ * The completion page (§9b item 6) — reached the only way a family can reach
+ * it, from the result step's "Finish".
+ *
+ * `components/wizard/finish-screen.test.tsx` covers the same page in jsdom with
+ * `@/lib/programs` and `@/i18n/navigation` mocked, so it cannot see a real
+ * `usePrograms` regression, a broken `Link` or a guard that bounces the page
+ * away. This does: real API, real router, real store.
+ */
+test.describe("finish page", () => {
+  test("carries the list, the chance and the two exits", async ({ page }) => {
+    await openResult(page, STRICT);
+    await expect(page.getByTestId("assignment-chance")).toBeVisible();
+
+    await page.getByTestId("result-finish").click();
+    await page.waitForURL("**/es/finish");
+
+    await expect(
+      page.getByRole("heading", { level: 1, name: es.app.finish.title }),
+    ).toBeVisible();
+
+    // The same number the result step showed, from the same response.
+    await expect(page.getByTestId("finish-chance")).toHaveText(
+      formatPercent(1 - unmatchedRisk(STRICT), "es"),
+    );
+    await expect(page.getByTestId("finish-chance-stale")).toHaveCount(0);
+
+    // The whole list, in order, with every label resolved through the real
+    // `/programs/{id}` — and each with its commune and region (§9b item 4).
+    const items = page.getByTestId("finish-wish");
+    await expect(items).toHaveCount(STRICT.inputs.wishes.length);
+    for (const [index, choice] of referenceChoices(STRICT).entries()) {
+      await expect(items.nth(index)).toContainText(choice.program);
+    }
+    const first = await programOf(page, STRICT.inputs.wishes[0].program_id);
+    await expect(items.first()).toContainText(
+      `${first.school_commune} · ${first.region}`,
+    );
+
+    // Read-only, and explicit that nothing was submitted.
+    await expect(page.getByTestId("finish-official")).toHaveText(
+      es.app.finish.official,
+    );
+    await expect(
+      page.getByRole("button", { name: es.wishes.card.remove }),
+    ).toHaveCount(0);
+
+    // Not a step: no rail, no Back/Continue bar — its two exits are the page's
+    // own.
+    await expect(
+      page.getByRole("navigation", { name: es.steps.navLabel }),
+    ).toHaveCount(0);
+    await expect(page.getByTestId("wizard-continue")).toHaveCount(0);
+    await expect(page.getByTestId("wizard-back")).toHaveCount(0);
+
+    // Exit 1: back to the result, with the result still there.
+    await page.getByTestId("finish-back").click();
+    await page.waitForURL("**/es/result");
+    await expect(page.getByTestId("assignment-chance")).toHaveText(
+      formatPercent(1 - unmatchedRisk(STRICT), "es"),
+    );
+
+    // Exit 2: start over — the wizard is cleared and the front door is back.
+    await page.getByTestId("result-finish").click();
+    await page.waitForURL("**/es/finish");
+    await page.getByTestId("finish-start-over").click();
+    await page.waitForURL(/\/es$/);
+    await expect(
+      page.getByRole("heading", { level: 1, name: es.app.welcome.headline }),
+    ).toBeVisible();
+    const stored = await page.evaluate(() =>
+      JSON.stringify(window.sessionStorage),
+    );
+    expect(stored).not.toContain(STRICT.inputs.wishes[0].program_id);
+  });
+});

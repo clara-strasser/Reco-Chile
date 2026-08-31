@@ -15,7 +15,7 @@
   },
   "more": {
     "trigger": "More filters: school day, PIE, PACE, fees and other characteristics",
-    "hint": "Leave a filter empty when that characteristic is not essential for the family."
+    "hint": "Leave a filter empty when that characteristic is not essential for you."
   },
   "fields": {
     "specialty": {
@@ -73,6 +73,7 @@
     "inputPlaceholder": "School, commune, or program details",
     "add": "Add",
     "added": "Already in the list",
+    "locationUnknown": "Commune and region not available",
     "loading": "Searching programs…",
     "empty": "No program matches this search.",
     "error": "The program list could not be loaded.",

@@ -1,3 +1,4 @@
+import * as React from "react";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { NextIntlClientProvider } from "next-intl";
@@ -15,6 +16,25 @@ vi.mock("next/navigation", async (importOriginal) => ({
   ...(await importOriginal<typeof import("next/navigation")>()),
   useSearchParams: () => new URLSearchParams(),
   usePathname: () => "/es/student",
+}));
+
+// `@/i18n/navigation` builds its `Link` with next-intl's client navigation,
+// which imports `next/navigation` through its own package and cannot be
+// resolved outside a Next.js build. The stub keeps the href the component
+// asks for; adding the `/[locale]` prefix is next-intl's job and is asserted
+// end-to-end in `e2e/student.spec.ts` instead.
+vi.mock("@/i18n/navigation", () => ({
+  Link: ({
+    href,
+    children,
+    ...props
+  }: React.ComponentProps<"a"> & { href: string }) => (
+    <a href={href} {...props}>
+      {children}
+    </a>
+  ),
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  usePathname: () => "/student",
 }));
 
 /**
@@ -136,26 +156,40 @@ describe("StudentStep — identifier field", () => {
   });
 });
 
-describe("StudentStep — mode controls", () => {
-  it("labels the list-status question as the radio group", () => {
+describe("StudentStep — the welcome answer (§9b item 2)", () => {
+  it("no longer asks the question — the welcome page does", () => {
     renderStep();
 
-    const group = screen.getByRole("radiogroup", {
-      name: copy.listStatus.label,
-    });
-    expect(group).toBeInTheDocument();
+    expect(screen.queryByRole("radiogroup")).toBeNull();
     expect(useWizardStore.getState().listExists).toBeNull();
+    // With no answer the note has nothing to report; the step guard is what
+    // keeps this state off the screen in the running app.
+    expect(screen.queryByTestId("list-choice-note")).toBeNull();
   });
 
-  it("writes listExists for either answer", async () => {
-    const user = userEvent.setup();
+  it("reports the answer with the label of the button that was pressed", () => {
+    useWizardStore.getState().setListExists(false);
     renderStep();
 
-    await user.click(screen.getByRole("radio", { name: copy.listStatus.no }));
-    expect(useWizardStore.getState().listExists).toBe(false);
+    expect(screen.getByTestId("list-choice-note")).toHaveTextContent(
+      es.app.welcome.no,
+    );
+    expect(screen.getByTestId("list-choice-note")).not.toHaveTextContent(
+      es.app.welcome.yes,
+    );
+  });
 
-    await user.click(screen.getByRole("radio", { name: copy.listStatus.yes }));
-    expect(useWizardStore.getState().listExists).toBe(true);
+  it("links back to the welcome page to change it", () => {
+    useWizardStore.getState().setListExists(true);
+    renderStep();
+
+    const change = screen.getByTestId("list-choice-change");
+    expect(change).toHaveTextContent(copy.listChoice.change);
+    // The welcome page; `@/i18n/navigation` adds the `/es` prefix at runtime.
+    expect(change).toHaveAttribute("href", "/");
+    expect(screen.getByTestId("list-choice-note")).toHaveTextContent(
+      es.app.welcome.yes,
+    );
   });
 
   it("shows the preference-group alert only while ties mode is on", async () => {
@@ -195,6 +229,30 @@ describe("StudentStep — mode controls", () => {
 });
 
 describe("StudentStep — standing copy", () => {
+  it("opens with the research-tool disclaimer, above the identifier", () => {
+    renderStep();
+
+    const disclaimer = screen.getByTestId("student-disclaimer");
+    expect(disclaimer).toHaveTextContent(copy.disclaimer);
+    // "Prominently at the top" (§9b item 2): before the RUN/IPE field in the
+    // document order, which is also the reading and the tab order.
+    const input = screen.getByLabelText(copy.idLabel);
+    expect(
+      disclaimer.compareDocumentPosition(input) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("keeps jargon out of the identifier copy (§9b item 3)", () => {
+    renderStep();
+
+    // No "modulo-11 check digit", no "MTB", no OpenStreetMap on this step.
+    for (const text of [copy.idHelp, copy.why.body, copy.why.privacy]) {
+      expect(text).not.toMatch(/módulo|modulo|MTB|OpenStreetMap/i);
+    }
+    expect(copy.privacyNote).not.toMatch(/OpenStreetMap/i);
+  });
+
   it("keeps the estimate caveat available and the privacy note visible", () => {
     renderStep();
 

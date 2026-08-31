@@ -1,7 +1,7 @@
 {
-  "title": "Review the risk of your SAE preference list",
-  "tagline": "Add the student's preferences and estimate the risk of remaining without an assignment. This research tool supports decisions; it does not replace or submit the official SAE application.",
-  "simulationName": "SAE admission-risk simulation",
+  "title": "Calculate your SAE admission chances",
+  "tagline": "Enter your preference list and estimate your chances of getting a place. This research tool helps you decide; it does not replace or submit your official SAE application.",
+  "simulationName": "SAE admission-chance simulation",
   "languageLabel": "Language",
   "language": {
     "es": "Español",
@@ -9,10 +9,29 @@
   },
   "yes": "Yes",
   "no": "No",
+  "welcome": {
+    "headline": "Enter your preference list and calculate your admission chances.",
+    "subline": "If you do not have your preference list yet — no worries, we will help you out.",
+    "question": "Do you already have your preference list?",
+    "yes": "Yes — review my list",
+    "no": "No — help me build it"
+  },
+  "finish": {
+    "title": "You're done",
+    "lead": "You have reviewed your chances. This is the list you ended up with.",
+    "chanceLabel": "Your estimated chance of being assigned",
+    "staleNote": "Go back to the result to calculate your chances with the current list.",
+    "listTitle": "Your preference list",
+    "listEmpty": "You have not added any programs to your list yet.",
+    "locationUnknown": "Commune and region not available",
+    "official": "Remember: this tool submits nothing. To apply for real, enter your list on the official SAE website before the deadline.",
+    "backToResult": "Back to my results",
+    "startOver": "Start over"
+  },
   "aboutEstimate": {
     "title": "About this estimate",
     "body": "The model uses historical 2024 calibration data and 2025 capacity data. Results are estimates, not official admission guarantees.",
-    "mtbMode": "MTB mode (admission 2026): SHA-256(RUN/IPE+RBD) percentile by school. Results are estimates based on last year's calibration data, not official admission guarantees."
+    "mtbMode": "For the 2026 admission process, the tie-breaking lottery is reproduced from your RUN/IPE at each school. Results are estimates based on last year's calibration data, not official admission guarantees."
   },
   "error": {
     "title": "We could not show this step",

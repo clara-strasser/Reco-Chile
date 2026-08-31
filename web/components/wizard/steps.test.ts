@@ -4,12 +4,17 @@ import en from "@/messages/en";
 import es from "@/messages/es";
 
 import {
+  FINISH_PATH,
+  FINISH_SLUG,
   STEP_LABEL_KEY,
   STEP_LEAD_KEY,
   STEP_SLUGS,
   STEP_TITLE_KEY,
+  WELCOME_PATH,
+  isFinishPathname,
   isStepSlug,
   nextSlug,
+  ownsForwardChoice,
   previousSlug,
   stepFromPathname,
   stepNumber,
@@ -34,6 +39,15 @@ describe("step identity", () => {
     expect(isStepSlug("Student")).toBe(false);
     expect(isStepSlug("")).toBe(false);
   });
+
+  it("keeps the welcome and completion pages out of the four steps", () => {
+    // §9b: the rail still shows four steps. The welcome page opens the wizard
+    // and the completion page ends it; neither is a `StepSlug`.
+    expect(isStepSlug(FINISH_SLUG)).toBe(false);
+    expect(STEP_SLUGS).not.toContain(FINISH_SLUG);
+    expect(WELCOME_PATH).toBe("/");
+    expect(FINISH_PATH).toBe("/finish");
+  });
 });
 
 describe("routing", () => {
@@ -51,12 +65,29 @@ describe("routing", () => {
     expect(stepFromPathname("/")).toBeNull();
   });
 
+  it("tells the completion page from a step, whatever the locale prefix", () => {
+    expect(isFinishPathname("/es/finish")).toBe(true);
+    expect(isFinishPathname("/en/finish/")).toBe(true);
+    expect(isFinishPathname("/finish")).toBe(true);
+    expect(isFinishPathname("/es/result")).toBe(false);
+    expect(isFinishPathname("/es")).toBe(false);
+    expect(isFinishPathname("/")).toBe(false);
+    // Not a step, so the step lookup must not claim it either.
+    expect(stepFromPathname("/es/finish")).toBeNull();
+  });
+
   it("walks forward and backward, stopping at the ends", () => {
     expect(previousSlug("student")).toBeNull();
     expect(nextSlug("student")).toBe("list");
     expect(nextSlug("result")).toBe("improve");
     expect(previousSlug("improve")).toBe("result");
     expect(nextSlug("improve")).toBeNull();
+  });
+
+  it("gives the generic Continue only to the steps without their own choice", () => {
+    // §9b item 6: step 3 ends with the explicit finish / improve pair, so the
+    // shell's bar must not offer a third, unlabelled way forward.
+    expect(STEP_SLUGS.filter(ownsForwardChoice)).toEqual(["result"]);
   });
 });
 
@@ -113,6 +144,24 @@ describe("message ids resolve in both locales", () => {
     "student.idLabel",
     "student.idPlaceholder",
     "student.idHelp",
+    "student.disclaimer",
+    "student.listChoice.note",
+    "student.listChoice.change",
+    "app.welcome.headline",
+    "app.welcome.subline",
+    "app.welcome.question",
+    "app.welcome.yes",
+    "app.welcome.no",
+    "app.finish.title",
+    "app.finish.lead",
+    "app.finish.chanceLabel",
+    "app.finish.staleNote",
+    "app.finish.listTitle",
+    "app.finish.listEmpty",
+    "app.finish.locationUnknown",
+    "app.finish.official",
+    "app.finish.backToResult",
+    "app.finish.startOver",
     "student.idValid",
     "student.idRequiredHint",
     "errors.invalidStudentId",

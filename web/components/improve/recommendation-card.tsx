@@ -3,6 +3,7 @@
 import { CalculatorIcon } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 
+import { formatProgramLocation } from "@/components/list/program-location";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -40,7 +41,10 @@ import { riskLevelTone, ToneAlert } from "./tone-alert";
  *
  * The optional lines are dropped rather than dashed when their value is
  * missing, matching the prototype's `if distance != "" and not pd.isna(...)` /
- * `if np.isfinite(current) and projected_risk` guards.
+ * `if np.isfinite(current) and projected_risk` guards. The location line is the
+ * one deliberate exception (MIGRATION.md §9b.4): it always renders, because a
+ * school name without its commune and region cannot be looked up or told apart
+ * from its namesakes.
  *
  * Capacity and the estimated MTB rank use {@link formatBareInt}, not the
  * grouped `formatInt`: `ui_common.format_display_table` renders both with
@@ -64,10 +68,13 @@ export function RecommendationCard({
   const t = useTranslations();
   const locale = useLocale();
 
-  const location = [item.school_commune, item.region]
-    .map((part) => part.trim())
-    .filter((part) => part !== "")
-    .join(" · ");
+  // Commune *and* region, always (MIGRATION.md §9b.4). A suggestion is a school
+  // you have never heard of by definition, and dozens of Chilean schools share
+  // a name across communes — the card title alone cannot identify one. Built by
+  // the same helper the step-2 rows use, so both steps disambiguate alike.
+  const location =
+    formatProgramLocation(item.school_commune, item.region) ||
+    t("improve.card.noInformation");
 
   const distance = formatDistanceKm(item.distance_km, locale);
   const showImpact =
@@ -90,7 +97,9 @@ export function RecommendationCard({
     >
       <CardHeader>
         <CardTitle className="text-base">{item.school_name}</CardTitle>
-        {location !== "" ? <CardDescription>{location}</CardDescription> : null}
+        <CardDescription data-testid="recommendation-location">
+          {location}
+        </CardDescription>
       </CardHeader>
 
       <CardContent className="flex flex-col gap-3">

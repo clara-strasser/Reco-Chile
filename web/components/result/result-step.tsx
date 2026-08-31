@@ -1,14 +1,20 @@
 "use client";
 
 /**
- * Step 3 — review the result (MIGRATION.md §4.1, Phase 4).
+ * Step 3 — review the result (MIGRATION.md §4.1, Phase 4; reshaped by §9b).
  *
  * The step runs `/simulate` on entry whenever the stored result is stale, then
- * renders the prototype's section 3 in its original order:
+ * renders, top to bottom:
  *
- *   summary (metric, attention alert, outcomes, explanations)
+ *   headline (chance of being assigned, most likely school, estimate caption)
+ *   -> outcomes (top four + all of them) and the interpretation popover
  *   -> ties mode:   sensitivity verdict, per-order view, reference + technical
  *      strict mode: family table, chance popover, detailed calculation
+ *   -> the finish / improve choice
+ *
+ * Product feedback round 1 (§9b, items 5–6) put the two figures first and took
+ * the attention-level alerts and their thresholds out entirely; everything the
+ * prototype showed below them is still here, moved down or into a disclosure.
  *
  * Which branch is shown follows the *mode the family chose*, exactly as
  * `app.py` does: it stores `mode: "equivalence"` whenever the ties toggle is
@@ -33,6 +39,8 @@ import { useWizardStore } from "@/lib/store/wizard";
 
 import { EquivalenceBlock } from "./equivalence-block";
 import { FamilyChanceTable } from "./family-chance-table";
+import { ResultActions } from "./result-actions";
+import { ResultHeadline } from "./result-headline";
 import { ResultSummary } from "./result-summary";
 
 export function ResultStep() {
@@ -52,6 +60,7 @@ export function ResultStep() {
         <ResultSkeleton />
       ) : simulation ? (
         <div className="flex flex-col gap-8">
+          <ResultHeadline simulation={simulation} />
           <ResultSummary simulation={simulation} />
           {useEquivalenceClasses ? (
             <EquivalenceBlock
@@ -61,6 +70,7 @@ export function ResultStep() {
           ) : (
             <FamilyChanceTable simulation={simulation} />
           )}
+          <ResultActions />
         </div>
       ) : (
         // The step guard normally keeps this state unreachable; it is what the

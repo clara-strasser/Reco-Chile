@@ -195,10 +195,20 @@ Contract rules:
 
 | Step | Route | Content | Can enter when | "Continue" enabled when |
 | --- | --- | --- | --- | --- |
-| 1 Student | `/[locale]/student` | RUN/IPE (with inline format/check-digit feedback), "why" popover, list-exists radio, ties toggle (+ info callout), "about this estimate" | always | RUN/IPE passes client pre-check |
+| 1 Student | `/[locale]/student` | RUN/IPE (with inline format feedback), "why" popover, disclaimer, ties toggle (+ info callout), "about this estimate" | welcome answered (§9b item 2) | RUN/IPE passes client pre-check |
 | 2 Build list | `/[locale]/list` | filter panel (only if "No — help me build it"; collapsible "more filters"), program combobox with server search, wish cards (rank badge or group input, details sheet, priority collapsible, remove, reorder), imputed notice, order-count caption in ties mode | step 1 valid | ≥1 program and (ties mode) order count ≤ max |
-| 3 Result | `/[locale]/result` | runs `/simulate` on entry if stale; risk metric + attention alert; outcomes list; family table; explanation popovers; detailed table (collapsible); sensitivity block in ties mode | step 2 valid | simulation succeeded |
+| 3 Result | `/[locale]/result` | runs `/simulate` on entry if stale; headline (chance of assignment + most likely outcome); outcomes list; family table; explanation popovers; detailed table (collapsible); sensitivity block in ties mode; the finish / improve choice | step 2 valid | — (the step states its own two ways onward; the *improve* half is enabled when the simulation succeeded) |
 | 4 Improve | `/[locale]/improve` | current risk; address form + geocode + clear + precision feedback; count slider; recommendation cards with risk badge; "Add selected and review" → appends, invalidates, navigates to step 2 with toast | simulation succeeded | — (terminal; back to 2) |
+
+Two pages sit outside the four steps since MIGRATION.md §9b:
+
+| Page | Route | Content | Can enter when |
+| --- | --- | --- | --- |
+| Welcome | `/[locale]` | positive-framing headline + the "do you already have a list?" choice as two buttons (replaces step 1's radio) | always — it is also where the guard sends an unanswered wizard |
+| Finish | `/[locale]/finish` | chance of assignment, the read-only list (with commune + region), the "nothing was submitted" reminder, back-to-result and start-over | a fresh simulation exists |
+
+Neither carries a stepper marker or the Back/Continue bar; the finish page lives
+in the `(wizard)` route group only to inherit `/meta`, the store and the guard.
 
 Stepper items are links; a step is clickable only when its "can enter"
 condition holds. Deep-linking to a locked step redirects to the last allowed
@@ -273,8 +283,11 @@ tokens are defined but not required. Components used per step are listed in
 Phase 2/3 tasks (Combobox, Card, Collapsible, Sheet, Popover, Alert, Badge,
 Table, Slider, Checkbox, RadioGroup, Switch, Toast, Breadcrumb/stepper).
 
-Risk framing colours (unmatched risk badges, attention alerts) use the same
-three levels and thresholds as the prototype and come from `/meta`.
+Risk framing colours use the same three levels and thresholds as the prototype
+and come from `/meta`. Since §9b item 5 that is true of step 4's recommendation
+badges only: step 3's attention alerts and their threshold explanations were
+removed from the UI, and nothing in `web/` reads `attention_level` or
+`thresholds` any more (the API still returns both).
 
 ### 4.5 Privacy rules carried over
 
@@ -569,9 +582,14 @@ Operating rules:
 | 4 | 2026-08-30 | `wf_bebaf675-554` | green — `e2e/result.spec.ts` renders the exact golden percentages for strict_04 and equiv_01/02/03 | `formatPercent`/`fixedHalfEven` verified against CPython on 117k values. Deviation: es uses a comma decimal ("54,8%") where the prototype printed "54.8%" in both languages — accepted; parity means identical digits, locale punctuation. Open → Phase 6: ties mode with no actual ties must render the equivalence block (verdict *stable*, reference + technical tables) like the prototype; cap/paginate the technical variants table (5,040-row lists are reachable). |
 | 5 | 2026-08-30 | `wf_bebaf675-554` | green — `e2e/improve.spec.ts` with intercepted `/api/geocode` | Address geocoding on click only, recommendation cards with risk badges, append → step 2. Open → Phase 6: the step-2 "N added" banner never fires (producer clears the flag; a toast stands in) — fix the step-guard race instead of the unmount workaround; render `errors.portfolioRiskFailed` when every chance is null; trim appended recommendations to `max_wishes`; bare integers (capacity, MTB rank) must not be thousands-grouped; XFF trust flag for deployments without a front proxy; delete dead `placeholder-step.tsx` / `student-step.tsx` shim / `WizardNav.pending` or wire it. |
 | 6 | 2026-08-30/31 | `wf_4bb844ac-ceb` (aborted at a session limit, stage 1 of 2 complete) | **NOT gated yet** | Stage 1 landed and is committed as WIP: result fixes (ties-without-ties layout, technical-table pagination, bare-int formatting, shared Disclosure), list/improve fixes (step-guard race, added-banner, max_wishes trim, dead-code removal), backend hardening (TRUST_PROXY, env-driven CORS, constants centralized, access-log test), CI workflow + Dockerfiles + compose. **Still to do to close Phase 6:** run the full gate (`pytest` green at 118; web gate unverified), the a11y pass (`web/e2e/a11y.spec.ts` — @axe-core/playwright is installed), the responsive pass, the side-by-side parity report (`web/e2e/parity-report.md`), and an adversarial review. Re-launch as a fresh workflow (the run cache is session-local): stage 2 of the §9-recorded args, then gate + review. |
+| F1 | 2026-08-31 | `wf_4c453baf-e23` | green — `pytest`, `pnpm lint`, `pnpm format:check`, `tsc --noEmit`, `pnpm test`, `pnpm build`, `pnpm e2e` | Product feedback round 1 (§9b, items 1–6): welcome page with the two-button list choice, you-form copy everywhere, jargon removed from step 1, commune + region on every program listing, step-3 headline (chance of assignment + most likely outcome) replacing the risk metric and the attention alerts, explicit finish / improve choice and a new `/[locale]/finish` page. Engine, API and golden fixtures untouched. Review: 1 must-fix — the most-likely card was driven by `predicted_outcome`, which flips to `Unmatched` at the 2.7% hard threshold and so contradicted both the chance above it and the podium below it in the 2.7%-to-top band; it now reads `outcomes[0]`, with `e2e/result.spec.ts` covering a fixture inside that band. Should-fixes landed with it: location lines on step 3, `student.idLabel` in the you-form, this document, and `/finish` added to the a11y + responsive sweeps with one real e2e. Phase 6's open items (§9 row 6) are unaffected and still stand. |
 | 7 | – | – | – | |
 
-Parity checklist (filled in Phase 6):
+Parity checklist (filled in Phase 6). Copy comparisons for step 1 and step 3
+are **void** since the F1 round — §9b lists the deliberate departures, so the
+side-by-side report Phase 6 still owes (`web/e2e/parity-report.md`) must skip
+step-1 and step-3 copy rather than report those departures as bugs. The
+numerical rows below are unaffected: no number changed.
 
 - [x] strict fixtures render identical digits (es uses comma decimal) — `e2e/result.spec.ts`
 - [x] equivalence fixtures: verdict text, order count, per-order cards — `e2e/result.spec.ts`
@@ -605,8 +623,40 @@ The §9 parity checklist no longer applies verbatim to the affected copy.
    disclosures.
 6. After the result: explicit choice "Finish" (summary/end page) vs
    "Not happy — improve my list" (step 4).
-7. Open item, feedback truncated: «When clicking on "about this estimate"» —
+7. Open (deferred should-fix from the F1 re-review): in ties mode the
+   equivalence verdict copy still names `predicted_outcome` ("lead to: X"),
+   which inside the 2.7%-band can contradict the new argmax headline directly
+   above it. Prototype-parity behaviour; needs a product decision (reword the
+   verdict copy, or derive the named outcome like the headline does).
+8. Open item, feedback truncated: «When clicking on "about this estimate"» —
    awaiting clarification from the user.
+
+### What "most likely" means on step 3 (item 5, as implemented)
+
+The headline's second card reads `outcomes[0]`, **not** `predicted_outcome`.
+They answer different questions: `wish_list.predicted_outcome_from_choices`
+returns `"Unmatched"` as soon as the unmatched risk reaches
+`HARD_UNMATCHED_THRESHOLD` (2.7%) — it is the prototype's *alert* trigger, not
+an argmax. Between 2.7% and the top school's probability, driving the card from
+it made the page contradict itself ("96% chance of a place" over "most likely
+you receive none of them", above a podium opening with a school at 42%).
+`outcomes[]` is sorted by probability and always contains `Unmatched` (§3), so
+its first entry *is* the most likely outcome. `predicted_outcome` still drives
+the equivalence verdicts, where it is prototype parity.
+
+### What this round changed in `web/` (nothing outside it)
+
+- `app/[locale]/page.tsx` (welcome), `app/[locale]/(wizard)/finish/page.tsx`,
+  `components/wizard/{welcome-screen,finish-screen}.tsx`,
+  `components/result/{result-headline,result-actions,program-line}.tsx`.
+- `components/result/labels.ts` resolves each program's commune and region
+  through `usePrograms`, so item 4 holds on step 3 too; `WishResult` still
+  carries neither and the API was not changed.
+- Copy in `messages/{es,en}/*.json` only; every English string still has its
+  Spanish twin (`lib/i18n-messages.test.ts`).
+- Consequences for this document: §4.1 row 1 and row 3 rewritten, the two
+  non-step pages added under §4.1, §4.4 narrowed to step 4's badges, and the
+  §9 parity checklist's step-1/step-3 copy rows marked void.
 
 ## 10. Risks and open points
 

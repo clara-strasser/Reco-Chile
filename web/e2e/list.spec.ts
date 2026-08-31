@@ -55,6 +55,8 @@ type Program = {
   program_id: string;
   program_label: string;
   school_name: string;
+  school_commune: string;
+  region: string;
   calibration_imputed: boolean;
 };
 
@@ -67,9 +69,61 @@ async function fetchPrograms(request: APIRequestContext): Promise<Program[]> {
   return body.items;
 }
 
-/** Step 1 → step 2. The RUN is never persisted, so every test starts here. */
-async function openListStep(page: Page, locale: Locale = "es") {
-  await page.goto(`/${locale}/student`);
+/** The `commune · region` line a wish card must always carry (§9b.4). */
+function locationOf(program: Program): string {
+  return `${program.school_commune} · ${program.region}`;
+}
+
+/**
+ * Two programs whose schools share a name but sit in different communes.
+ *
+ * 91 school names in the current calibration data repeat across communes —
+ * "Liceo Ignacio Carrera Pinto" is one school in San Vicente and another in
+ * Frutillar. Two cards for those two schools must not read alike, which is what
+ * MIGRATION.md §9b.4 asks for. The pair is discovered at run time so the test
+ * survives a data change; `null` (no such pair) skips the paired assertions.
+ */
+async function findSameNamePair(
+  request: APIRequestContext,
+): Promise<[Program, Program] | null> {
+  for (const query of ["q=Carrera+Pinto&limit=1000", "limit=1000"]) {
+    const response = await request.get(`/api/programs?${query}`);
+    expect(response.ok()).toBeTruthy();
+    const { items } = (await response.json()) as { items: Program[] };
+    const bySchool = new Map<string, Program[]>();
+    for (const item of items) {
+      bySchool.set(item.school_name, [
+        ...(bySchool.get(item.school_name) ?? []),
+        item,
+      ]);
+    }
+    for (const programs of bySchool.values()) {
+      const other = programs.find(
+        (candidate) => candidate.school_commune !== programs[0].school_commune,
+      );
+      if (other) return [programs[0], other];
+    }
+  }
+  return null;
+}
+
+/**
+ * Welcome → step 1 → step 2. The RUN is never persisted, so every test starts
+ * at the front door.
+ *
+ * Since §9b item 2 the "do you already have a list?" question is the welcome
+ * page's pair of buttons, and answering it is what unlocks step 1. `"yes"` is
+ * the default here because most of these scenarios are about ordering a list
+ * that exists; `"no"` is the branch that adds the filter panel to step 2.
+ */
+async function openListStep(
+  page: Page,
+  locale: Locale = "es",
+  branch: "yes" | "no" = "yes",
+) {
+  await page.goto(`/${locale}`);
+  await page.getByTestId(`welcome-${branch}`).click();
+  await page.waitForURL(`**/${locale}/student`);
   await page.getByLabel(copy(locale, "student.idLabel")).fill(VALID_RUN);
   await page.getByTestId("wizard-continue").click();
   await page.waitForURL(`**/${locale}/list`);
@@ -141,6 +195,14 @@ test.describe("step 2 — build and order the list", () => {
       await expect(card.getByTestId("wish-label")).toHaveText(
         program.program_label,
       );
+      // The label alone repeats across communes, so every card states where
+      // the school is (§9b.4) — commune *and* region, never one of the two.
+      await expect(card.getByTestId("wish-location")).toHaveText(
+        locationOf(program),
+      );
+      await expect(card.getByTestId("wish-details")).toContainText(
+        locationOf(program),
+      );
     }
     await expect(page.getByTestId("wish-count")).toHaveText(
       fill(copy("es", "list.current.count"), { n: "3" }),
@@ -173,6 +235,38 @@ test.describe("step 2 — build and order the list", () => {
         `[data-testid="program-search-option"][data-program-id="${programs[0].program_id}"]`,
       ),
     ).toHaveAttribute("data-excluded", "true");
+  });
+
+  test("tells two same-named schools apart on the wish cards", async ({
+    page,
+    request,
+  }) => {
+    const pair = await findSameNamePair(request);
+    test.skip(pair === null, "no school name repeats across communes here");
+    const [first, second] = pair as [Program, Program];
+
+    await openListStep(page);
+    await addProgram(page, first);
+    await addProgram(page, second);
+
+    const cards = page.getByTestId("wish-card");
+    await expect(cards).toHaveCount(2);
+
+    for (const program of [first, second]) {
+      await expect(
+        page
+          .locator(
+            `[data-testid="wish-card"][data-program-id="${program.program_id}"]`,
+          )
+          .getByTestId("wish-location"),
+      ).toHaveText(locationOf(program));
+    }
+
+    // The point of the line: the two cards are for schools with one name, and
+    // the location is what distinguishes them.
+    expect(first.school_name).toBe(second.school_name);
+    const locations = await page.getByTestId("wish-location").allInnerTexts();
+    expect(new Set(locations.map((line) => line.trim())).size).toBe(2);
   });
 
   test("reorders with the Move up and Move down buttons", async ({
@@ -355,22 +449,21 @@ test.describe("step 2 — build and order the list", () => {
   test("shows the filter panel only for the guided branch", async ({
     page,
   }) => {
-    await page.goto("/es/student");
-    await page.getByLabel(copy("es", "student.idLabel")).fill(VALID_RUN);
-
     // "No — help me build it": filters, and the caption that introduces them.
-    await page.getByLabel(copy("es", "student.listStatus.no")).click();
-    await page.getByTestId("wizard-continue").click();
-    await page.waitForURL("**/es/list");
+    await openListStep(page, "es", "no");
     await expect(page.getByTestId("filter-panel")).toBeVisible();
     await expect(page.getByTestId("list-caption")).toHaveText(
       copy("es", "filters.intro"),
     );
 
-    // "Yes — review my list": no filter panel, and the order reminder instead.
+    // "Yes — review my list", changed through the note step 1 carries: no
+    // filter panel, and the order reminder instead.
     await page.getByTestId("wizard-back").click();
     await page.waitForURL("**/es/student");
-    await page.getByLabel(copy("es", "student.listStatus.yes")).click();
+    await page.getByTestId("list-choice-change").click();
+    await page.waitForURL("**/es");
+    await page.getByTestId("welcome-yes").click();
+    await page.waitForURL("**/es/student");
     await page.getByTestId("wizard-continue").click();
     await page.waitForURL("**/es/list");
     await expect(page.getByTestId("filter-panel")).toHaveCount(0);

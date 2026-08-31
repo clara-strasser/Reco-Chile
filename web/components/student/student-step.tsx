@@ -8,19 +8,24 @@ import { StepPage } from "@/components/wizard/step-page";
 
 import { AboutEstimate } from "./about-estimate";
 import { EquivalenceSwitch } from "./equivalence-switch";
-import { ListStatusField } from "./list-status-field";
+import { ListChoiceNote } from "./list-choice-note";
 import { PrivacyNote } from "./privacy-note";
+import { ResearchDisclaimer } from "./research-disclaimer";
 import { StudentIdField } from "./student-id-field";
 
 /**
  * Step 1 — identify the student (MIGRATION.md §4.1 row 1; `app.py` lines
  * 176-230).
  *
- * Two cards, in the prototype's own order: the identifier with its "why do we
- * ask" popover, then the family's starting situation — is the list already
- * established, and is its order still open. Below them the "about this
- * estimate" caveat and the privacy statement, both closing rather than
- * interrupting the form.
+ * Since MIGRATION.md §9b the step opens with the research-tool disclaimer —
+ * the family reads what this is before typing an identifier — and the
+ * "is the list already established?" radio is gone: the welcome page asks that
+ * question now, and only the answer plus a link back to change it remain.
+ *
+ * So: the disclaimer, the identifier with its "why do we ask" popover, then
+ * the current situation — the welcome answer and whether the order is still
+ * open. Below them the "about this estimate" caveat and the privacy statement,
+ * both closing rather than interrupting the form.
  *
  * Continue is *not* wired here. The gate ("RUN/IPE passes the client
  * pre-check") lives in the store, `use-wizard-gating.ts` binds it to the route
@@ -37,6 +42,8 @@ export function StudentStep() {
 
   return (
     <StepPage slug="student">
+      <ResearchDisclaimer />
+
       <Card>
         <CardContent>
           <StudentIdField />
@@ -45,11 +52,10 @@ export function StudentStep() {
 
       <Card>
         <CardHeader>
-          {/* `st.markdown("#### Start from the family's current situation")` */}
           <CardTitle>{t("situationTitle")}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-5">
-          <ListStatusField />
+          <ListChoiceNote />
           <Separator />
           <EquivalenceSwitch />
         </CardContent>

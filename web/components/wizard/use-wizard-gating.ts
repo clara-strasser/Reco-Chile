@@ -11,9 +11,13 @@ import {
 } from "@/lib/store/wizard";
 
 import {
+  FINISH_SLUG,
+  isFinishPathname,
   STEP_SLUGS,
   stepFromPathname,
   stepNumber,
+  stepPath,
+  WELCOME_PATH,
   type StepSlug,
 } from "./steps";
 
@@ -21,20 +25,27 @@ import {
  * Binds the store's step gates (MIGRATION.md §4.1) to the current route.
  *
  * The rules themselves live in `@/lib/store/wizard`; this hook only decides
- * *which* step the URL is on, supplies `/meta.max_exact_equiv_permutations` and
+ * *which* route the URL is on, supplies `/meta.max_exact_equiv_permutations` and
  * `/meta.max_wishes` as the two server limits, and re-exposes the gates as plain booleans so every
  * component below takes props instead of touching the store.
+ *
+ * Two routes under `(wizard)` are not steps and are told apart by `kind`:
+ * the completion page `/finish` (§9b item 6), which the shell draws without the
+ * rail; and — as a redirect target only — the welcome page at `WELCOME_PATH`,
+ * which is where an unanswered welcome question sends the family (§9b item 2).
  *
  * Each gate is a separate primitive subscription, so the shell re-renders only
  * when a gate actually flips — not on every keystroke in the wish list.
  */
 export type WizardGating = {
-  /** Current step slug; `student` when the pathname is not a wizard route. */
+  /** `"step"` for the four numbered steps, `"finish"` for the completion page. */
+  kind: "step" | typeof FINISH_SLUG;
+  /** Current step slug; `student` when the pathname is not a wizard step. */
   slug: StepSlug;
-  /** May the family be on this step right now? */
+  /** May the family be on this route right now? */
   allowed: boolean;
-  /** Furthest enterable step — the guard's redirect target. */
-  fallbackSlug: StepSlug;
+  /** Where the guard sends them when they may not — a locale-free path. */
+  fallbackHref: string;
   canEnter: (slug: StepSlug) => boolean;
   canContinue: boolean;
 };
@@ -43,7 +54,9 @@ export function useWizardGating(): WizardGating {
   const pathname = usePathname();
   const meta = useMetaOptional();
 
-  const slug = stepFromPathname(pathname ?? "") ?? "student";
+  const path = pathname ?? "";
+  const finish = isFinishPathname(path);
+  const slug = stepFromPathname(path) ?? "student";
   // Both server caps of §3, straight from `/meta`, so every gate the shell
   // draws — the stepper links, Continue, and the guard's fallback — uses the
   // numbers the API will enforce, and does so from the first render rather than
@@ -53,7 +66,8 @@ export function useWizardGating(): WizardGating {
     maxWishes: meta?.max_wishes ?? null,
   };
 
-  // Step 1 is always enterable (§4.1), so only 2–4 need a subscription.
+  // Step 1 needs the welcome answer since §9b, so all four need a subscription.
+  const canEnterStudent = useWizardStore(selectCanEnterStep(1, options));
   const canEnterList = useWizardStore(selectCanEnterStep(2, options));
   const canEnterResult = useWizardStore(selectCanEnterStep(3, options));
   const canEnterImprove = useWizardStore(selectCanEnterStep(4, options));
@@ -62,24 +76,44 @@ export function useWizardGating(): WizardGating {
   );
 
   const entry: Record<StepSlug, boolean> = {
-    student: true,
+    student: canEnterStudent,
     list: canEnterList,
     result: canEnterResult,
     improve: canEnterImprove,
   };
 
   // `lastAllowedStep` from the store needs the whole state object; the same
-  // answer falls out of the four booleans already subscribed to.
-  let fallbackSlug: StepSlug = "student";
+  // answer falls out of the four booleans already subscribed to. `null` — not
+  // even step 1 — is the welcome page.
+  let fallbackSlug: StepSlug | null = null;
   for (const candidate of STEP_SLUGS) {
     if (!entry[candidate]) break;
     fallbackSlug = candidate;
   }
+  const fallbackHref =
+    fallbackSlug === null ? WELCOME_PATH : stepPath(fallbackSlug);
+
+  if (finish) {
+    return {
+      kind: FINISH_SLUG,
+      slug,
+      // The completion page shows the result again, so it needs the same fresh
+      // simulation step 4 does — `canEnterStep(4)` is exactly that condition.
+      allowed: entry.improve,
+      // "else redirect to result" (§9b item 6); when the result step itself is
+      // out of reach the family goes wherever they may legally be instead, so
+      // one redirect lands rather than bouncing through a locked step.
+      fallbackHref: entry.result ? stepPath("result") : fallbackHref,
+      canEnter: (candidate) => entry[candidate],
+      canContinue: false,
+    };
+  }
 
   return {
+    kind: "step",
     slug,
     allowed: entry[slug],
-    fallbackSlug,
+    fallbackHref,
     canEnter: (candidate) => entry[candidate],
     canContinue: canContinueHere,
   };

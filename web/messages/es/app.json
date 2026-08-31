@@ -1,7 +1,7 @@
 {
-  "title": "Revisa el riesgo de tu lista de preferencias SAE",
-  "tagline": "Agrega las preferencias del estudiante y estima el riesgo de quedar sin asignación. Esta herramienta de investigación apoya la decisión; no reemplaza ni envía la postulación oficial SAE.",
-  "simulationName": "Simulación de riesgo de admisión SAE",
+  "title": "Calcula tus posibilidades de admisión SAE",
+  "tagline": "Ingresa tu lista de preferencias y estima tus posibilidades de obtener un cupo. Esta herramienta de investigación te ayuda a decidir; no reemplaza ni envía tu postulación oficial al SAE.",
+  "simulationName": "Simulación de posibilidades de admisión SAE",
   "languageLabel": "Idioma",
   "language": {
     "es": "Español",
@@ -9,10 +9,29 @@
   },
   "yes": "Sí",
   "no": "No",
+  "welcome": {
+    "headline": "Ingresa tu lista de preferencias y calcula tus posibilidades de admisión.",
+    "subline": "¿Aún no tienes tu lista? No te preocupes, te ayudamos a crearla.",
+    "question": "¿Ya tienes tu lista de preferencias?",
+    "yes": "Sí — quiero revisar mi lista",
+    "no": "No — ayúdame a crearla"
+  },
+  "finish": {
+    "title": "¡Listo!",
+    "lead": "Ya revisaste tus posibilidades. Esta es la lista con la que terminaste.",
+    "chanceLabel": "Tu posibilidad estimada de quedar asignado",
+    "staleNote": "Vuelve al resultado para calcular tus posibilidades con la lista actual.",
+    "listTitle": "Tu lista de preferencias",
+    "listEmpty": "Todavía no agregaste programas a tu lista.",
+    "locationUnknown": "Comuna y región sin información",
+    "official": "Recuerda: esta herramienta no envía nada. Para postular de verdad, ingresa tu lista en el sitio oficial del SAE dentro del plazo.",
+    "backToResult": "Volver a mis resultados",
+    "startOver": "Empezar de nuevo"
+  },
   "aboutEstimate": {
     "title": "Acerca de esta estimación",
     "body": "El modelo usa datos históricos de calibración 2024 y datos de cupos 2025. Los resultados son estimaciones, no garantías oficiales de admisión.",
-    "mtbMode": "Modo MTB (admisión 2026): percentil SHA-256(RUN/IPE+RBD) por establecimiento. Los resultados son estimaciones basadas en la calibración del año anterior; no son garantías oficiales de admisión."
+    "mtbMode": "Para la admisión 2026, el sorteo de desempate se reproduce a partir de tu RUN/IPE en cada establecimiento. Los resultados son estimaciones basadas en la calibración del año anterior; no son garantías oficiales de admisión."
   },
   "error": {
     "title": "No pudimos mostrar este paso",

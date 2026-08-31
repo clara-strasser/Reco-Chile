@@ -5,12 +5,16 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useRouter } from "@/i18n/navigation";
 import { useWizardStore } from "@/lib/store/wizard";
 
-import { stepNumber, stepPath, type StepSlug } from "./steps";
+import { stepNumber, type StepSlug } from "./steps";
 
 /**
  * Deep-link guard for the wizard routes (MIGRATION.md §4.1: "Deep-linking to a
  * locked step redirects to the last allowed step. The step guard lives in the
- * `(wizard)/layout.tsx`").
+ * `(wizard)/layout.tsx`"), and for the completion page of §9b item 6.
+ *
+ * Since §9b the redirect target is not necessarily a step: with the welcome
+ * question unanswered the last allowed *anything* is the welcome page, so the
+ * caller hands in a path rather than a slug.
  *
  * The state it gates on is client-only — `studentId` and `simulation` are never
  * persisted (§4.2 privacy posture), so the server cannot know whether a step is
@@ -19,7 +23,8 @@ import { stepNumber, stepPath, type StepSlug } from "./steps";
  *
  * While the redirect is in flight the locked step's content is replaced by a
  * skeleton: rendering `children` would flash a step the family may not enter and
- * would fire its data hooks.
+ * would fire its data hooks. The same skeleton covers the frame before
+ * `hydrateWizardStore()` has run — see `hydrated` below.
  *
  * ## Navigations the wizard starts itself
  *
@@ -41,19 +46,27 @@ import { stepNumber, stepPath, type StepSlug } from "./steps";
 export function StepGuard({
   slug,
   allowed,
-  fallbackSlug,
+  fallbackHref,
   children,
 }: {
   /** The step the URL is on — needed to recognise the arrival of a wizard-owned
-   *  navigation, not just to decide whether it is allowed. */
-  slug: StepSlug;
+   *  navigation, not just to decide whether it is allowed. `null` on the
+   *  completion page, which is not a step and is never such a destination. */
+  slug: StepSlug | null;
   allowed: boolean;
-  fallbackSlug: StepSlug;
+  /** Locale-free path to redirect to — a step, or `WELCOME_PATH` when the
+   *  welcome question has not been answered (§9b item 2). */
+  fallbackHref: string;
   children: React.ReactNode;
 }) {
   const router = useRouter();
-  const target = stepPath(fallbackSlug);
 
+  // The persisted slices (`listExists`, `wishes`, …) land one effect after the
+  // tree mounts, so until then the store says "nothing answered, nothing
+  // chosen" about a family that may well have answered and chosen. Redirecting
+  // on that would bounce every reload of a legitimately reachable step back to
+  // the welcome page. The skeleton below stands in for the one frame it takes.
+  const hydrated = useWizardStore((state) => state.hydrated);
   const pendingNavigation = useWizardStore((state) => state.pendingNavigation);
   const setPendingNavigation = useWizardStore(
     (state) => state.setPendingNavigation,
@@ -63,7 +76,7 @@ export function StepGuard({
   // takes charge again. `ListStep` does the same on mount — the two are
   // idempotent, and having both means neither the only destination today nor a
   // future one can leave the guard switched off.
-  const arrived = pendingNavigation === stepNumber(slug);
+  const arrived = slug !== null && pendingNavigation === stepNumber(slug);
   React.useEffect(() => {
     if (arrived) setPendingNavigation(null);
   }, [arrived, setPendingNavigation]);
@@ -71,8 +84,8 @@ export function StepGuard({
   const suppressed = pendingNavigation !== null && !arrived;
 
   React.useEffect(() => {
-    if (!allowed && !suppressed) router.replace(target);
-  }, [allowed, suppressed, router, target]);
+    if (hydrated && !allowed && !suppressed) router.replace(fallbackHref);
+  }, [hydrated, allowed, suppressed, router, fallbackHref]);
 
   if (allowed || suppressed) return <>{children}</>;
 

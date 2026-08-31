@@ -2,16 +2,16 @@
   "title": "2. Build and order the preference list",
   "current": {
     "title": "Current preference list",
-    "empty": "No program selected yet. Add the student's first wish above.",
+    "empty": "No program selected yet. Add your first preference above.",
     "count": "{n} program(s) selected",
-    "useBuilder": "Use the builder below to enter the existing wish list directly."
+    "useBuilder": "Use the builder below to enter your existing list directly."
   },
   "order": {
     "strictHint": "Enter programs in strict order. The first program is the highest-ranked choice, and the final chance of each lower option depends on not getting the options above it.",
-    "preferenceHint": "Add the programs in the order the family genuinely prefers.",
-    "reorderHint": "Use ↑ and ↓ to reorder the student's strict ranking.",
+    "preferenceHint": "Add the programs in the order you genuinely prefer.",
+    "reorderHint": "Use ↑ and ↓ to reorder your strict ranking.",
     "howTitle": "How should preferences be entered?",
-    "howBody": "Strict ranking means every program has a precise rank. Equivalence classes allow several programs to share the same preference group when the family sees them as tied."
+    "howBody": "Strict ranking means every program has a precise rank. Equivalence classes allow several programs to share the same preference group when you see them as tied."
   },
   "card": {
     "detailsTitle": "Program details",

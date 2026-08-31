@@ -6,6 +6,9 @@
  * "Chance if considered vs. final chance" popover and the detailed
  * calculation, exactly as `render_simulation_result` lays them out in strict
  * mode.
+ *
+ * Each row names the school with its commune and region (§9b item 4), so a
+ * family reading the table can tell two same-named schools apart.
  */
 
 import { InfoIcon } from "lucide-react";
@@ -31,6 +34,7 @@ import { formatInt, formatPercent } from "@/lib/format";
 
 import { DetailTable } from "./detail-table";
 import { useResultLabels } from "./labels";
+import { ProgramLine } from "./program-line";
 
 export function FamilyChanceTable({
   simulation,
@@ -67,7 +71,12 @@ export function FamilyChanceTable({
                 <TableCell className="text-right tabular-nums">
                   {formatInt(wish.wish_rank, locale)}
                 </TableCell>
-                <TableCell>{labels.outcome(wish.program_label)}</TableCell>
+                <TableCell>
+                  <ProgramLine
+                    name={labels.outcome(wish.program_label)}
+                    location={labels.location(wish.program_id)}
+                  />
+                </TableCell>
                 <TableCell
                   className="text-right tabular-nums"
                   data-testid="final-chance"
