@@ -583,6 +583,31 @@ Parity checklist (filled in Phase 6):
 
 ---
 
+## 9b. Product feedback round 1 (2026-08-31) — deliberate departures from prototype parity
+
+User feedback changes the web UI away from the Streamlit prototype. The API,
+engine, and golden fixtures are untouched; these are presentation decisions.
+The §9 parity checklist no longer applies verbatim to the affected copy.
+
+1. Direct address ("you"/"tú") everywhere instead of "the family"/"the student".
+2. Positive framing: a new welcome page opens the wizard — "Submit your
+   preference list and calculate your admission chances. If you do not have
+   your preference list yet, no worries — we will help you out." with the
+   Yes-review / No-help-me choice as two buttons (replaces the step-1 radio);
+   disclaimer + RUN/IPE follow on the student step.
+3. Jargon removed from family-facing copy: "school-specific MTB tie-break
+   calculation", "modulo-11 check digit", and the OpenStreetMap note on step 1
+   (the OSM note stays only on step 4 where the address is actually used).
+4. Program disambiguation: commune + region shown wherever a program is listed.
+5. Result step: attention-level alerts and threshold explanations removed.
+   Headline shows the overall estimated chance of assignment (1 − unmatched
+   risk) and the most likely school with its wish rank. Details stay in
+   disclosures.
+6. After the result: explicit choice "Finish" (summary/end page) vs
+   "Not happy — improve my list" (step 4).
+7. Open item, feedback truncated: «When clicking on "about this estimate"» —
+   awaiting clarification from the user.
+
 ## 10. Risks and open points
 
 | Risk | Mitigation |
