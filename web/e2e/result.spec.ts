@@ -442,7 +442,10 @@ test.describe("result step — the outcome box", () => {
     await openResult(page, MID_BAND, "en");
     await expect(page.getByTestId("predicted-chance")).toHaveText(
       copy(en.result.outcome.chance, {
-        chance: formatPercent(topProgram(MID_BAND).choice_assignment_probability, "en"),
+        chance: formatPercent(
+          topProgram(MID_BAND).choice_assignment_probability,
+          "en",
+        ),
       }),
     );
   });

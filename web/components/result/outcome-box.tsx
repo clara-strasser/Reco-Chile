@@ -50,11 +50,7 @@ import { useResultLabels } from "./labels";
 /** The engine's outcome code for "none of the listed programs" (§3). */
 const UNMATCHED = "Unmatched";
 
-export function OutcomeBox({
-  simulation,
-}: {
-  simulation: SimulationResponse;
-}) {
+export function OutcomeBox({ simulation }: { simulation: SimulationResponse }) {
   const t = useTranslations("result");
   const locale = useLocale();
   const labels = useResultLabels(simulation);

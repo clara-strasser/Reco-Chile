@@ -112,7 +112,10 @@ export function StudentIdField() {
             "text-emerald-700 dark:text-emerald-400",
           )}
         >
-          <CircleCheckIcon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          <CircleCheckIcon
+            className="mt-0.5 size-4 shrink-0"
+            aria-hidden="true"
+          />
           {t("student.idValid", { kind: KIND_NAME[check.kind] })}
         </p>
       ) : check.reason === "empty" ? null : (
@@ -123,7 +126,10 @@ export function StudentIdField() {
           data-state={state}
           className="flex items-start gap-1.5 text-sm text-destructive"
         >
-          <CircleAlertIcon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          <CircleAlertIcon
+            className="mt-0.5 size-4 shrink-0"
+            aria-hidden="true"
+          />
           {t(FAILURE_KEY[check.reason])}
         </p>
       )}
