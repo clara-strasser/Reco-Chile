@@ -93,6 +93,13 @@ jobs:
       - name: Format check
         run: pnpm format:check
 
+      # `next build` writes the generated route types (the PageProps and
+      # LayoutProps globals) into .next/types, which tsconfig.json includes.
+      # This step runs before Build, so it has to generate them itself or tsc
+      # fails on a clean checkout with "Cannot find name 'PageProps'".
+      - name: Generate route types
+        run: pnpm exec next typegen
+
       - name: Types
         run: pnpm exec tsc --noEmit
 
