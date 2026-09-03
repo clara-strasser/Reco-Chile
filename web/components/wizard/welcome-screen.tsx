@@ -7,17 +7,18 @@ import { Button } from "@/components/ui/button";
 import { useRouter } from "@/i18n/navigation";
 import { hydrateWizardStore, useWizardStore } from "@/lib/store/wizard";
 
-import { stepPath } from "./steps";
+import { DISCLAIMER_PATH } from "./steps";
 
 /**
  * The welcome page — the wizard's front door (MIGRATION.md §9b item 2).
  *
  * Almost blank on purpose: the positive framing sentence as the headline, the
  * reassurance under it, and the one question the prototype used to ask with a
- * radio inside step 1. Answering it here is what unlocks step 1
- * (`canEnterStep(1)` → `hasListChoice`), so the two buttons are the only way
- * into the wizard and the step guard's redirect target while the answer is
- * missing.
+ * radio inside step 1. Answering it here is half of what unlocks step 1
+ * (`canEnterStep(1)` → `hasListChoice` — the other half is the consent
+ * checkbox on `DisclaimerScreen`, which is where both buttons send the
+ * family next), so the two buttons are the step guard's redirect target
+ * while the answer is missing.
  *
  * No stepper and no Back/Continue bar: this page sits outside the `(wizard)`
  * route group, so it never mounts `WizardShell` — and it never reads `/meta`
@@ -44,7 +45,7 @@ export function WelcomeScreen() {
 
   function choose(listExists: boolean) {
     setListExists(listExists);
-    router.push(stepPath("student"));
+    router.push(DISCLAIMER_PATH);
   }
 
   return (
@@ -56,9 +57,6 @@ export function WelcomeScreen() {
         <h1 className="text-2xl font-semibold tracking-tight text-balance sm:text-3xl">
           {t("headline")}
         </h1>
-        <p className="text-base text-pretty text-muted-foreground">
-          {t("subline")}
-        </p>
       </header>
 
       <div className="flex flex-col gap-4">

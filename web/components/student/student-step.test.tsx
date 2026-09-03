@@ -76,29 +76,25 @@ beforeEach(() => {
 });
 
 describe("StudentStep — identifier field", () => {
-  it("starts empty, with the hint and no error styling", () => {
+  it("starts empty, with no feedback line and no error styling", () => {
     renderStep();
 
     const input = screen.getByLabelText(copy.idLabel);
     expect(input).toHaveValue("");
     expect(input).not.toHaveAttribute("aria-invalid");
-    expect(feedback()).toHaveAttribute("data-state", "empty");
-    expect(feedback()).toHaveTextContent(copy.idRequiredHint);
+    expect(input).not.toHaveAttribute("aria-describedby");
+    expect(screen.queryByTestId("student-id-feedback")).toBeNull();
   });
 
-  it("links the feedback and the help text to the input", () => {
+  it("links the feedback line to the input once there is one to show", async () => {
+    const user = userEvent.setup();
     renderStep();
 
-    const input = screen.getByLabelText(copy.idLabel);
-    const describedBy = (input.getAttribute("aria-describedby") ?? "").split(
-      " ",
-    );
+    await user.type(screen.getByLabelText(copy.idLabel), "12.345.678-5");
 
-    expect(describedBy).toContain("student-id-feedback");
-    expect(describedBy.length).toBe(2);
-    for (const id of describedBy) {
-      expect(document.getElementById(id)).not.toBeNull();
-    }
+    const input = screen.getByLabelText(copy.idLabel);
+    expect(input).toHaveAttribute("aria-describedby", "student-id-feedback");
+    expect(document.getElementById("student-id-feedback")).not.toBeNull();
   });
 
   it("keeps the identifier out of autofill and spellcheck (§4.5)", () => {
@@ -157,108 +153,36 @@ describe("StudentStep — identifier field", () => {
 });
 
 describe("StudentStep — the welcome answer (§9b item 2)", () => {
-  it("no longer asks the question — the welcome page does", () => {
+  it("no longer asks the question, and no longer echoes the answer either", () => {
     renderStep();
 
+    // The welcome page owns the question; the "Your current situation" note
+    // that used to echo the answer back is gone too — the header's brand link
+    // is the way back to change it.
     expect(screen.queryByRole("radiogroup")).toBeNull();
     expect(useWizardStore.getState().listExists).toBeNull();
-    // With no answer the note has nothing to report; the step guard is what
-    // keeps this state off the screen in the running app.
     expect(screen.queryByTestId("list-choice-note")).toBeNull();
-  });
 
-  it("reports the answer with the label of the button that was pressed", () => {
-    useWizardStore.getState().setListExists(false);
-    renderStep();
-
-    expect(screen.getByTestId("list-choice-note")).toHaveTextContent(
-      es.app.welcome.no,
-    );
-    expect(screen.getByTestId("list-choice-note")).not.toHaveTextContent(
-      es.app.welcome.yes,
-    );
-  });
-
-  it("links back to the welcome page to change it", () => {
     useWizardStore.getState().setListExists(true);
     renderStep();
-
-    const change = screen.getByTestId("list-choice-change");
-    expect(change).toHaveTextContent(copy.listChoice.change);
-    // The welcome page; `@/i18n/navigation` adds the `/es` prefix at runtime.
-    expect(change).toHaveAttribute("href", "/");
-    expect(screen.getByTestId("list-choice-note")).toHaveTextContent(
-      es.app.welcome.yes,
-    );
-  });
-
-  it("shows the preference-group alert only while ties mode is on", async () => {
-    const user = userEvent.setup();
-    renderStep();
-
-    const toggle = screen.getByRole("switch", { name: copy.ties.label });
-    expect(screen.queryByTestId("equivalence-info")).toBeNull();
-    expect(screen.getByTestId("equivalence-mode")).toHaveTextContent(
-      copy.ties.strictLabel,
-    );
-
-    await user.click(toggle);
-
-    expect(useWizardStore.getState().useEquivalenceClasses).toBe(true);
-    expect(screen.getByTestId("equivalence-info")).toHaveTextContent(
-      copy.ties.info,
-    );
-    expect(screen.getByTestId("equivalence-mode")).toHaveTextContent(
-      copy.ties.equivalenceLabel,
-    );
-
-    await user.click(toggle);
-    expect(screen.queryByTestId("equivalence-info")).toBeNull();
-  });
-
-  it("describes the switch with its planning caveat", () => {
-    renderStep();
-
-    const toggle = screen.getByRole("switch", { name: copy.ties.label });
-    const describedBy = toggle.getAttribute("aria-describedby");
-    expect(describedBy).not.toBeNull();
-    expect(document.getElementById(describedBy!)).toHaveTextContent(
-      copy.ties.help,
-    );
+    expect(screen.queryByTestId("list-choice-note")).toBeNull();
   });
 });
 
 describe("StudentStep — standing copy", () => {
-  it("opens with the research-tool disclaimer, above the identifier", () => {
-    renderStep();
-
-    const disclaimer = screen.getByTestId("student-disclaimer");
-    expect(disclaimer).toHaveTextContent(copy.disclaimer);
-    // "Prominently at the top" (§9b item 2): before the RUN/IPE field in the
-    // document order, which is also the reading and the tab order.
-    const input = screen.getByLabelText(copy.idLabel);
-    expect(
-      disclaimer.compareDocumentPosition(input) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-  });
-
   it("keeps jargon out of the identifier copy (§9b item 3)", () => {
     renderStep();
 
     // No "modulo-11 check digit", no "MTB", no OpenStreetMap on this step.
-    for (const text of [copy.idHelp, copy.why.body, copy.why.privacy]) {
+    for (const text of [copy.why.body, copy.why.privacy]) {
       expect(text).not.toMatch(/módulo|modulo|MTB|OpenStreetMap/i);
     }
     expect(copy.privacyNote).not.toMatch(/OpenStreetMap/i);
   });
 
-  it("keeps the estimate caveat available and the privacy note visible", () => {
+  it("keeps the privacy note visible and the why-do-we-ask popover available", () => {
     renderStep();
 
-    expect(screen.getByTestId("about-estimate-trigger")).toHaveTextContent(
-      es.app.aboutEstimate.title,
-    );
     expect(screen.getByTestId("student-privacy-note")).toHaveTextContent(
       copy.privacyNote,
     );

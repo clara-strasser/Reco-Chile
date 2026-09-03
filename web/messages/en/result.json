@@ -1,8 +1,13 @@
 {
-  "title": "3. Review the result",
+  "title": "Review your results",
   "summaryTitle": "Summary",
   "heading": "Result of the preference list",
   "locationUnknown": "Commune and region not available",
+  "outcome": {
+    "title": "You're most likely to get into:",
+    "chance": "Estimated chance: {chance}",
+    "disclaimer": "Estimate based on historical data - not an official SAE guarantee."
+  },
   "headline": {
     "chanceTitle": "Overall estimated chance of getting assigned",
     "chanceNote": "Across every program on your list.",
@@ -16,7 +21,7 @@
   "next": {
     "title": "What would you like to do now?",
     "finish": "I'm happy — finish",
-    "finishHint": "You end here with a summary of your list and of this result.",
+    "finishHint": "You return to the start. Nothing is saved and nothing is submitted.",
     "improve": "Not happy — help me improve my list",
     "improveHint": "We suggest additional schools you can add at the end of your list."
   },

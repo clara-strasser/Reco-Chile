@@ -1,4 +1,4 @@
-"""Generate the frozen numerical baseline for the migration (MIGRATION.md §6).
+"""Generate the frozen numerical baseline for the engine (docs/MIGRATION.md §6).
 
 Run from the repository root::
 
@@ -6,8 +6,8 @@ Run from the repository root::
 
 The script writes one JSON file per scenario into ``tests/fixtures/golden/``.
 Those files are committed artifacts: the migrated engine must reproduce them.
-Regenerating them therefore requires a note in MIGRATION.md §9 — see
-``tests/fixtures/golden/README.md``.
+Regenerating them is a deliberate decision that has to be justified in the
+commit message — see ``tests/fixtures/golden/README.md``.
 
 Determinism
 -----------

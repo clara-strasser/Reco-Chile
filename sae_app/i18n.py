@@ -448,21 +448,3 @@ def t(key: str, *, lang: Optional[str] = None, **kwargs) -> str:
     text = TRANSLATIONS.get(active, {}).get(str(key), str(key))
     return text.format(**kwargs) if kwargs else text
 
-
-def format_option_label(value, *, lang: Optional[str] = None) -> str:
-    """Translate selectbox/multiselect display labels without changing stored values."""
-    return t(str(value), lang=lang)
-
-
-def display_outcome_label(value, *, lang: Optional[str] = None) -> str:
-    """Return a family-facing outcome label."""
-    text = str(value).strip()
-    if text == "Unmatched":
-        return t("Unmatched", lang=lang)
-    if " · RBD " in text:
-        before_rbd = text.split(" · RBD ", 1)[0].strip()
-        if " — " in before_rbd:
-            school_part, detail_part = before_rbd.split(" — ", 1)
-            if " · " in detail_part:
-                return school_part.strip()
-    return text

@@ -791,6 +791,51 @@ def test_recommend_reproduces_fixture(client, fixture):
     assert payload["similarity_fallback_mode"] == fallback_expected
 
 
+@pytest.mark.parametrize(
+    "fixture", RECOMMENDATION_FIXTURES, ids=_ids(RECOMMENDATION_FIXTURES)
+)
+def test_recommend_reports_the_chance_of_the_appended_wish(client, fixture):
+    """`final_chance_if_appended` is the engine's own identity, on the wire.
+
+    A candidate appended at the end is reached only if every current wish fell
+    through, so its final assignment probability is
+    ``current_unmatched_risk * chance_if_considered`` — the equality
+    ``candidate_portfolio_metrics`` documents. It is exposed so ``web/`` can
+    print the number without multiplying two probabilities itself (§0), and
+    ``appended_wish_rank`` names the position it assumes.
+    """
+    inputs = fixture["inputs"]
+    body = {
+        "student_id": inputs["student_id"],
+        "wishes": _wire_wishes(fixture, explicit_groups=False),
+        "max_recommendations": inputs["max_recommendations"],
+    }
+    home = inputs["home_geo_reference"]
+    if home:
+        body["home"] = {
+            "lat": home["lat"],
+            "lon": home["lon"],
+            "precision": home["precision"],
+        }
+
+    payload = client.post("/recommend", json=body).json()
+
+    assert payload["appended_wish_rank"] == len(body["wishes"]) + 1
+
+    base = payload["current_unmatched_risk"]
+    for item in payload["items"]:
+        label = item["program_label"]
+        final = item["final_chance_if_appended"]
+        assert final is not None, label
+        _assert_close(final, base * item["chance_if_considered"], f"{label}.final")
+        # …and the same number seen from the other side: appending the
+        # candidate removes exactly that much unmatched risk.
+        _assert_close(
+            final, base - item["projected_unmatched_risk"], f"{label}.marginal"
+        )
+        assert 0.0 <= final <= 1.0, label
+
+
 def test_recommend_rejects_invalid_student_id(client):
     fixture = RECOMMENDATION_FIXTURES[0]
     response = client.post(

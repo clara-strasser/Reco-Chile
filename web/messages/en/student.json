@@ -1,28 +1,13 @@
 {
-  "title": "1. Your details",
-  "lead": "We need your RUN or IPE to reproduce the tie-breaking lottery and calculate your chances.",
-  "disclaimer": "This is a research tool that helps you decide: it does not replace or submit your official SAE application.",
+  "title": "Your details",
+  "lead": "We need your RUN or IPE to calculate your chances.",
   "idLabel": "Your RUN or IPE",
   "idPlaceholder": "12.345.678-5 / 111222333-4",
-  "idHelp": "Enter the RUN or IPE including its final verification digit; dots and hyphen are optional.",
   "idValid": "Valid {kind} format.",
-  "idRequiredHint": "Enter your RUN/IPE to unlock the analysis.",
   "privacyNote": "The calculation runs on this application's server. Your RUN/IPE is not stored in the browser and never appears in the web address.",
   "why": {
     "title": "Why do we ask for this?",
-    "body": "We use this number to reproduce the official tie-breaking lottery each school runs, which is what decides your place among the applicants.",
+    "body": "We need your RUN or IPE to calculate your chances.",
     "privacy": "The number never leaves this tool: it is not submitted anywhere and it does not change your official application."
-  },
-  "listChoice": {
-    "note": "Your answer: {answer}",
-    "change": "Change answer"
-  },
-  "situationTitle": "Your current situation",
-  "ties": {
-    "label": "I have not yet decided the exact order between some programs",
-    "help": "Use this planning option to compare possible orders. Before submitting the official application you will still have to choose the order you genuinely prefer.",
-    "info": "Give the same preference-group number to the programs you currently consider tied. The app will compare every compatible order, but this exploratory grouping is not submitted to SAE.",
-    "strictLabel": "Strict ranking",
-    "equivalenceLabel": "Equivalence classes"
   }
 }

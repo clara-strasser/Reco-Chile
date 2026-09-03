@@ -8,8 +8,6 @@ import {
   Popover,
   PopoverContent,
   PopoverDescription,
-  PopoverHeader,
-  PopoverTitle,
   PopoverTrigger,
 } from "@/components/ui/popover";
 
@@ -17,9 +15,12 @@ import {
  * The prototype's `st.popover(t("Why do we ask for this?"))` next to the
  * RUN/IPE field (`app.py` §1).
  *
- * It carries the same two paragraphs as the prototype, in the same order: what
- * the identifier is used for, then the privacy caveat as a caption. Nothing is
- * reworded — the copy is looked up from `student.why.*`, whose Spanish values
+ * The question is the trigger's own label, so the panel does not repeat it as
+ * a heading — it only needs `aria-label` for its accessible name (Radix gives
+ * the panel `role="dialog"`, which the trigger's text does not satisfy on its
+ * own). It carries the same two paragraphs as the prototype, in the same
+ * order: what the identifier is used for, then the privacy caveat as a
+ * caption. The copy is looked up from `student.why.*`, whose Spanish values
  * come verbatim from `messages/_source.es.json`.
  */
 export function WhyWeAsk() {
@@ -36,14 +37,9 @@ export function WhyWeAsk() {
       <PopoverContent
         align="start"
         className="w-80"
-        // Radix gives the panel `role="dialog"`, which has to carry a name of
-        // its own — the trigger's text is not one (axe `aria-dialog-name`).
         aria-label={t("title")}
         data-testid="student-why-content"
       >
-        <PopoverHeader>
-          <PopoverTitle>{t("title")}</PopoverTitle>
-        </PopoverHeader>
         <p>{t("body")}</p>
         {/* `st.caption` in the prototype: the same paragraph, one level quieter. */}
         <PopoverDescription className="text-xs">

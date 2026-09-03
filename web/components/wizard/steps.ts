@@ -29,6 +29,17 @@ export type StepSlug = (typeof STEP_SLUGS)[number];
 export const WELCOME_PATH = "/";
 
 /**
+ * The "Before we continue" consent page — `app/[locale]/disclaimer/page.tsx`.
+ *
+ * Screen 2 of the front door: shown after the welcome page's Yes/No choice and
+ * before step 1, with one checkbox ("I understand and want to continue") that
+ * has to be checked before the family can reach step 1. Like the welcome page
+ * it carries no stepper, no Back/Continue bar and no `/meta` fetch, and is
+ * outside the `(wizard)` route group for the same reason.
+ */
+export const DISCLAIMER_PATH = "/disclaimer";
+
+/**
  * The completion page — `app/[locale]/(wizard)/finish/page.tsx` (§9b item 6).
  *
  * Deliberately *outside* the stepper: the rail keeps its four steps, and the

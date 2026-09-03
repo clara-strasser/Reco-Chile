@@ -80,6 +80,7 @@ const PERSIST_VERSION = 1;
 async function seedList(page: Page): Promise<void> {
   const state = {
     listExists: true,
+    disclaimerAcknowledged: true,
     useEquivalenceClasses: false,
     wishes: LIST.inputs.wishes.map((wish) => ({
       programId: wish.program_id,
@@ -405,7 +406,7 @@ for (const viewport of VIEWPORTS) {
       // --- step 3 --------------------------------------------------------
       await page.getByTestId("wizard-continue").click();
       await page.waitForURL("**/es/result");
-      await expect(page.getByTestId("unmatched-risk")).toBeVisible({
+      await expect(page.getByTestId("result-outcome")).toBeVisible({
         timeout: 60_000,
       });
       await checkStep(page, "3-result", viewport, {
@@ -428,41 +429,9 @@ for (const viewport of VIEWPORTS) {
         ).toBeGreaterThanOrEqual(32);
       }
 
-      // Collapsed, the step has one table; expanded it has the detailed
-      // calculation too, which is the widest table in the wizard.
-      await page
-        .getByRole("button", { name: es.result.detail.trigger })
-        .click();
-      await expect(page.getByTestId("detail-table")).toBeVisible();
-      await checkStep(page, "3-result-detail", viewport, {
-        back: true,
-        forward: false,
-      });
-
-      // --- the completion page -------------------------------------------
-      // Not a step (§9b item 6): no rail, no Back/Continue bar. Its read-only
-      // list is the widest thing on it — long school names plus a commune and
-      // a region under each — so 360 px is exactly where it can break.
-      await page.getByTestId("result-finish").click();
-      await page.waitForURL("**/es/finish");
-      await expect(page.getByTestId("finish-wish")).toHaveCount(
-        LIST.inputs.wishes.length,
-      );
-      await expect(
-        page.getByRole("navigation", { name: es.steps.navLabel }),
-      ).toHaveCount(0);
-      await checkStep(page, "5-finish", viewport, {
-        back: false,
-        forward: false,
-        stepper: false,
-      });
-
-      // Back to the result, the way the page offers it, and on to step 4.
-      await page.getByTestId("finish-back").click();
-      await page.waitForURL("**/es/result");
-      await expect(page.getByTestId("unmatched-risk")).toBeVisible({
-        timeout: 60_000,
-      });
+      // Feedback round 2 removed every table from step 3, and with it the
+      // completion page this walkthrough used to visit: the outcome box is now
+      // the widest thing here, and "finish" ends the session at the front door.
 
       // --- step 4 --------------------------------------------------------
       await page.getByTestId("result-improve").click();

@@ -9,9 +9,11 @@ import es from "../messages/es";
  * `wizard.spec.ts` already covers the shell (routing, the welcome page, the
  * guard, the stepper, the locale switch). What is under test here is the step
  * itself: the live RUN/IPE pre-check, the copy MIGRATION.md §9b item 3 stripped
- * of jargon, and the two mode facts — the welcome answer and the ties switch —
- * including which of them survives a reload: the privacy line of §4.2/§4.5 that
- * says the identifier is memory-only while the family's mode choices are not.
+ * of jargon, and the welcome answer — including that it survives a reload
+ * while the identifier does not (the privacy line of §4.2/§4.5). The
+ * research-tool disclaimer lives on its own page now (`DisclaimerScreen`,
+ * covered by `e2e/wizard.spec.ts`), the "about this estimate" caveat is gone
+ * from this step, and the ties switch moved to step 2 (`e2e/list.spec.ts`).
  *
  * Since §9b the step is only reachable through the welcome page, so every test
  * enters through `openStudent()` rather than deep-linking `/es/student`.
@@ -59,7 +61,10 @@ function validCopy(locale: Locale, kind: "RUN" | "IPE"): string {
   return copy(locale, "student.idValid").replace("{kind}", kind);
 }
 
-/** Through the welcome page into step 1 — the only way in since §9b item 2. */
+/**
+ * Through the welcome page and the "Before we continue" consent page into
+ * step 1 — the only way in since §9b item 2.
+ */
 async function openStudent(
   page: Page,
   {
@@ -69,6 +74,9 @@ async function openStudent(
 ) {
   await page.goto(`/${locale}`);
   await page.getByTestId(`welcome-${answer}`).click();
+  await page.waitForURL(`**/${locale}/disclaimer`);
+  await page.getByTestId("disclaimer-checkbox").click();
+  await page.getByTestId("disclaimer-continue").click();
   await page.waitForURL(`**/${locale}/student`);
 }
 
@@ -98,10 +106,7 @@ test.describe("step 1 — identify the student", () => {
   }) => {
     await openStudent(page);
 
-    await expect(feedback(page)).toHaveAttribute("data-state", "empty");
-    await expect(feedback(page)).toHaveText(
-      copy("es", "student.idRequiredHint"),
-    );
+    await expect(feedback(page)).toHaveCount(0);
     await expect(continueButton(page)).toBeDisabled();
 
     await identifierInput(page).fill(BAD_CHECK_DIGIT);
@@ -154,48 +159,6 @@ test.describe("step 1 — identify the student", () => {
     await expect(content).not.toContainText(/OpenStreetMap/i);
   });
 
-  test("the research-tool disclaimer opens the step", async ({ page }) => {
-    await openStudent(page);
-
-    // §9b item 2: prominent, above the identifier field, and no interaction
-    // needed to read it.
-    await expect(page.getByTestId("student-disclaimer")).toHaveText(
-      copy("es", "student.disclaimer"),
-    );
-  });
-
-  test("the identifier help drops the check-digit jargon", async ({ page }) => {
-    await openStudent(page);
-
-    const input = identifierInput(page);
-    const describedBy = (await input.getAttribute("aria-describedby")) ?? "";
-    const helpId = describedBy
-      .split(" ")
-      .find((id) => id.endsWith("-help")) as string;
-
-    await expect(page.locator(`#${helpId}`)).toHaveText(
-      copy("es", "student.idHelp"),
-    );
-    // §9b item 3: "modulo-11 check digit" is gone; the sentence still tells the
-    // family what to type.
-    await expect(page.locator(`#${helpId}`)).not.toContainText(/módulo/i);
-  });
-
-  test("the estimate caveat is collapsed until it is opened", async ({
-    page,
-  }) => {
-    await openStudent(page);
-
-    const trigger = page.getByTestId("about-estimate-trigger");
-    await expect(trigger).toHaveText(copy("es", "app.aboutEstimate.title"));
-    await expect(page.getByTestId("about-estimate-content")).toBeHidden();
-
-    await trigger.click();
-    await expect(page.getByTestId("about-estimate-content")).toContainText(
-      copy("es", "app.aboutEstimate.body"),
-    );
-  });
-
   test("the privacy note is visible without any interaction", async ({
     page,
   }) => {
@@ -208,66 +171,15 @@ test.describe("step 1 — identify the student", () => {
 });
 
 test.describe("step 1 — mode controls", () => {
-  test("turning the ties switch on reveals the preference-group alert", async ({
-    page,
-  }) => {
-    await openStudent(page);
-
-    const toggle = page.getByRole("switch", {
-      name: copy("es", "student.ties.label"),
-    });
-    await expect(toggle).toHaveAttribute("aria-checked", "false");
-    await expect(page.getByTestId("equivalence-info")).toHaveCount(0);
-    await expect(page.getByTestId("equivalence-mode")).toHaveText(
-      copy("es", "student.ties.strictLabel"),
-    );
-
-    await toggle.click();
-
-    await expect(toggle).toHaveAttribute("aria-checked", "true");
-    await expect(page.getByTestId("equivalence-info")).toHaveText(
-      copy("es", "student.ties.info"),
-    );
-    await expect(page.getByTestId("equivalence-mode")).toHaveText(
-      copy("es", "student.ties.equivalenceLabel"),
-    );
-
-    await toggle.click();
-    await expect(page.getByTestId("equivalence-info")).toHaveCount(0);
-  });
-
-  test("the switch is operable from the keyboard and keeps its help text", async ({
-    page,
-  }) => {
-    await openStudent(page);
-
-    const toggle = page.getByRole("switch", {
-      name: copy("es", "student.ties.label"),
-    });
-    await toggle.focus();
-    await page.keyboard.press("Space");
-
-    await expect(toggle).toHaveAttribute("aria-checked", "true");
-
-    const helpId = await toggle.getAttribute("aria-describedby");
-    expect(helpId).toBeTruthy();
-    await expect(page.locator(`#${helpId}`)).toHaveText(
-      copy("es", "student.ties.help"),
-    );
-  });
-
   test("the welcome answer survives a reload; the RUN/IPE does not", async ({
     page,
   }) => {
     await openStudent(page, { answer: "no" });
 
     await identifierInput(page).fill(VALID_RUN);
-    await page
-      .getByRole("switch", { name: copy("es", "student.ties.label") })
-      .click();
     await expect(continueButton(page)).toBeEnabled();
 
-    // Privacy (§4.2, §4.5): the mode choices are persisted, the identifier is
+    // Privacy (§4.2, §4.5): the welcome answer is persisted, the identifier is
     // never written anywhere.
     const stored = await persisted(page);
     expect(stored).toContain('"listExists":false');
@@ -277,41 +189,19 @@ test.describe("step 1 — mode controls", () => {
 
     await page.reload();
 
-    // The answer is what keeps the step reachable at all after a reload, and
-    // the note still reports it (§9b item 2).
+    // The answer is what keeps the step reachable at all after a reload
+    // (§9b item 2) — nothing on this step echoes it back any more.
     await expect(page).toHaveURL(/\/es\/student$/);
-    await expect(page.getByTestId("list-choice-note")).toContainText(
-      copy("es", "app.welcome.no"),
-    );
-    await expect(page.getByTestId("equivalence-info")).toBeVisible();
 
     await expect(identifierInput(page)).toHaveValue("");
-    await expect(feedback(page)).toHaveAttribute("data-state", "empty");
+    await expect(feedback(page)).toHaveCount(0);
     await expect(continueButton(page)).toBeDisabled();
-  });
-
-  test("the change link goes back to the welcome question", async ({
-    page,
-  }) => {
-    await openStudent(page, { answer: "yes" });
-
-    await page.getByTestId("list-choice-change").click();
-
-    await page.waitForURL("**/es");
-    await expect(page.getByTestId("welcome-no")).toBeVisible();
   });
 });
 
 test.describe("step 1 — English", () => {
   test("renders the same controls in the second locale", async ({ page }) => {
     await openStudent(page, { locale: "en" });
-
-    await expect(page.getByTestId("student-disclaimer")).toHaveText(
-      copy("en", "student.disclaimer"),
-    );
-    await expect(page.getByTestId("list-choice-note")).toContainText(
-      copy("en", "app.welcome.yes"),
-    );
 
     await identifierInput(page, "en").fill(VALID_IPE);
     await expect(feedback(page)).toHaveText(validCopy("en", "IPE"));

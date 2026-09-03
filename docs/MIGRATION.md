@@ -1,12 +1,36 @@
 # Migration: Streamlit → Next.js + shadcn/ui
 
-Status: **in progress** — Phases 0–5 done; see §9. This document is the single source of truth
-for the migration. It is written so that each phase can be handed to an
+> [!NOTE]
+> **Legacy document — kept for historical context. Do not plan work out of it.**
+>
+> The migration is **finished**: the Next.js wizard in `web/` is the app, and
+> FastAPI (`api.py`) over the `sae_app/` engine is the backend. There is no
+> active phase, nothing is gated on this file, and no further phase rows or
+> workflow runs are expected.
+>
+> What is still accurate and worth reading: §3 (API contract), §4 (wizard,
+> state model, i18n, privacy rules), §9b (the product-feedback decisions that
+> departed from prototype parity), and §9 as a record of how the app got here.
+> Code comments cite those section numbers on purpose.
+>
+> What is **not** current: the "in progress" framing, §7's phase plan and §8's
+> workflow instructions. Everywhere this document says Streamlit is kept as the
+> parity reference, read it in the past tense — `app.py`, `sae_app/ui_*`,
+> `sae_app/session_state.py`, `.streamlit/` and the `streamlit` dependency have
+> since been deleted (§9 row 7).
+>
+> **`CLAUDE.md` is the current source of truth for conventions**, including the
+> post-migration frontend style guide, which supersedes prototype parity
+> wherever the two disagree.
+
+Original status line (as of the last phase run): Phases 0–5 done, Phase 6
+partially landed and never gated; see §9. This document was the single source of
+truth for the migration, written so that each phase could be handed to an
 autonomous agent (Opus 5) as one well-scoped unit of work, with a verifiable
-gate before the next phase starts.
+gate before the next phase started.
 
 Companion docs: `README.md` (risk model, data files), `CLAUDE.md` (conventions
-for working in this repo, including the post-migration layout).
+for working in this repo).
 
 ---
 
@@ -583,7 +607,7 @@ Operating rules:
 | 5 | 2026-08-30 | `wf_bebaf675-554` | green — `e2e/improve.spec.ts` with intercepted `/api/geocode` | Address geocoding on click only, recommendation cards with risk badges, append → step 2. Open → Phase 6: the step-2 "N added" banner never fires (producer clears the flag; a toast stands in) — fix the step-guard race instead of the unmount workaround; render `errors.portfolioRiskFailed` when every chance is null; trim appended recommendations to `max_wishes`; bare integers (capacity, MTB rank) must not be thousands-grouped; XFF trust flag for deployments without a front proxy; delete dead `placeholder-step.tsx` / `student-step.tsx` shim / `WizardNav.pending` or wire it. |
 | 6 | 2026-08-30/31 | `wf_4bb844ac-ceb` (aborted at a session limit, stage 1 of 2 complete) | **NOT gated yet** | Stage 1 landed and is committed as WIP: result fixes (ties-without-ties layout, technical-table pagination, bare-int formatting, shared Disclosure), list/improve fixes (step-guard race, added-banner, max_wishes trim, dead-code removal), backend hardening (TRUST_PROXY, env-driven CORS, constants centralized, access-log test), CI workflow + Dockerfiles + compose. **Still to do to close Phase 6:** run the full gate (`pytest` green at 118; web gate unverified), the a11y pass (`web/e2e/a11y.spec.ts` — @axe-core/playwright is installed), the responsive pass, the side-by-side parity report (`web/e2e/parity-report.md`), and an adversarial review. Re-launch as a fresh workflow (the run cache is session-local): stage 2 of the §9-recorded args, then gate + review. |
 | F1 | 2026-08-31 | `wf_4c453baf-e23` | green — `pytest`, `pnpm lint`, `pnpm format:check`, `tsc --noEmit`, `pnpm test`, `pnpm build`, `pnpm e2e` | Product feedback round 1 (§9b, items 1–6): welcome page with the two-button list choice, you-form copy everywhere, jargon removed from step 1, commune + region on every program listing, step-3 headline (chance of assignment + most likely outcome) replacing the risk metric and the attention alerts, explicit finish / improve choice and a new `/[locale]/finish` page. Engine, API and golden fixtures untouched. Review: 1 must-fix — the most-likely card was driven by `predicted_outcome`, which flips to `Unmatched` at the 2.7% hard threshold and so contradicted both the chance above it and the podium below it in the 2.7%-to-top band; it now reads `outcomes[0]`, with `e2e/result.spec.ts` covering a fixture inside that band. Should-fixes landed with it: location lines on step 3, `student.idLabel` in the you-form, this document, and `/finish` added to the a11y + responsive sweeps with one real e2e. Phase 6's open items (§9 row 6) are unaffected and still stand. |
-| 7 | – | – | – | |
+| 7 | 2026-09-03 | – (done by hand, no workflow) | `pytest` 121 green, `import api` green with the `streamlit` module blocked | Cutover. Deleted `app.py`, `sae_app/ui_{common,simulation,wish_builder,recommendations}.py`, `sae_app/session_state.py`, `.streamlit/`, and the engine helpers that existed only for that UI (`i18n.format_option_label`, `i18n.display_outcome_label`, `recommendations.clear_candidate_risk_cache`). `requirements-api.txt` merged back into `requirements.txt` (which no longer lists streamlit) and its references in CI, `Dockerfile.api` and `.dockerignore` updated; the Streamlit-blocked import check stays in CI as a permanent regression test. Streamlit noise filters dropped from `pytest.ini` and `tests/conftest.py`. This document moved to `docs/`. No engine arithmetic, no golden fixture and nothing under `web/` was touched. |
 
 Parity checklist (filled in Phase 6). Copy comparisons for step 1 and step 3
 are **void** since the F1 round — §9b lists the deliberate departures, so the
@@ -606,6 +630,15 @@ numerical rows below are unaffected: no number changed.
 User feedback changes the web UI away from the Streamlit prototype. The API,
 engine, and golden fixtures are untouched; these are presentation decisions.
 The §9 parity checklist no longer applies verbatim to the affected copy.
+
+> A **second round** of the same kind of feedback (2026-09-03) went further,
+> after this section was written: step 3 was reduced to a single outcome box
+> (the overall-chance figure of item 5 below is gone with it), step 4 was
+> reduced to slider → address → suggestions, and the ties control moved to
+> step 2 behind a "What does this mean?" popover. Round 2 was not written up
+> here — the durable rules from both rounds are the **frontend style guide in
+> `CLAUDE.md`**, which is what to follow. Items below that round 2 superseded
+> are marked in the affected components' docstrings.
 
 1. Direct address ("you"/"tú") everywhere instead of "the family"/"the student".
 2. Positive framing: a new welcome page opens the wizard — "Submit your

@@ -1,5 +1,5 @@
 {
-  "title": "Calculate your SAE admission chances",
+  "title": "Calculate your admission chances",
   "tagline": "Enter your preference list and estimate your chances of getting a place. This research tool helps you decide; it does not replace or submit your official SAE application.",
   "simulationName": "SAE admission-chance simulation",
   "languageLabel": "Language",
@@ -10,11 +10,18 @@
   "yes": "Yes",
   "no": "No",
   "welcome": {
-    "headline": "Enter your preference list and calculate your admission chances.",
-    "subline": "If you do not have your preference list yet — no worries, we will help you out.",
+    "headline": "Calculate your admission chances",
     "question": "Do you already have your preference list?",
-    "yes": "Yes — review my list",
-    "no": "No — help me build it"
+    "yes": "Yes",
+    "no": "No, help me build it"
+  },
+  "disclaimer": {
+    "headline": "Before we continue, please keep two things in mind",
+    "item1Title": "This is not your official application.",
+    "item1Body": "You still need to submit your application separately to SAE — this tool does not do that for you.",
+    "item2Title": "These are estimates, not guarantees.",
+    "item2Body": "We calculate your chances based on past years' data, so please treat the results as general guidance, not a certain outcome.",
+    "checkbox": "I understand and want to continue"
   },
   "finish": {
     "title": "You're done",
@@ -29,9 +36,7 @@
     "startOver": "Start over"
   },
   "aboutEstimate": {
-    "title": "About this estimate",
-    "body": "The model uses historical 2024 calibration data and 2025 capacity data. Results are estimates, not official admission guarantees.",
-    "mtbMode": "For the 2026 admission process, the tie-breaking lottery is reproduced from your RUN/IPE at each school. Results are estimates based on last year's calibration data, not official admission guarantees."
+    "body": "The model uses historical 2024 calibration data and 2025 capacity data. Results are estimates, not official admission guarantees."
   },
   "error": {
     "title": "We could not show this step",

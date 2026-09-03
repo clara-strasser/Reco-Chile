@@ -1,10 +1,8 @@
 "use client";
 
-import { CalculatorIcon } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 
 import { formatProgramLocation } from "@/components/list/program-location";
-import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -14,54 +12,49 @@ import {
 } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import type { RecommendationItem } from "@/lib/api/types";
-import { formatBareInt } from "@/lib/format";
 import {
   formatDistanceKm,
   formatPercent,
-  formatRatio,
   isFiniteNumber,
 } from "@/lib/recommendations";
 
-import { riskLevelTone, ToneAlert } from "./tone-alert";
-
 /**
- * One suggested program — the `st.container(border=True)` block of
- * `ui_recommendations.py`, field for field and in the same order.
+ * One suggested program.
  *
- * Every number arrives raw from `/recommend` and is only formatted here (§0:
- * the frontend never recomputes a probability). The impact alert's colour comes
- * from the engine's `risk_level`, not from a threshold comparison done in the
- * browser, so the green/orange/red boundaries cannot drift from the prototype's.
+ * Feedback round 2 cut this down to what a family decides on: the school, where
+ * it is, the program, how far away it is, and *the one number that answers
+ * "should I add this"* — the chance of actually being assigned to it if it goes
+ * on the end of the list. Gone with the text: the before→after unmatched-risk
+ * sentence, the conditional "chance if you reach this preference", the "why it
+ * appears" line and the "View calculation details" popover (capacity,
+ * applicants per seat, estimated lottery rank).
+ *
+ * The chance is `final_chance_if_appended` — computed by the engine as
+ * `current_unmatched_risk * chance_if_considered` and put on the wire for this
+ * (§0: the frontend never multiplies two probabilities). `appended_wish_rank`
+ * names the position it assumes, so the card can say *which* preference the
+ * number belongs to instead of leaving the family to infer it.
+ *
+ * `risk_level` no longer colours an alert, but it stays on the element as a
+ * data attribute: it is the engine's own banding, and dropping it from the DOM
+ * would take the parity hook with it.
  *
  * The optional lines are dropped rather than dashed when their value is
- * missing, matching the prototype's `if distance != "" and not pd.isna(...)` /
- * `if np.isfinite(current) and projected_risk` guards. The location line is the
- * one deliberate exception (MIGRATION.md §9b.4): it always renders, because a
- * school name without its commune and region cannot be looked up or told apart
- * from its namesakes.
- *
- * Capacity and the estimated MTB rank use {@link formatBareInt}, not the
- * grouped `formatInt`: `ui_common.format_display_table` renders both with
- * `f"{int(round(float(x)))}"`, and a grouped "1.234" would read as 1.234 in
- * Spanish, where "." is the decimal separator's counterpart. The applicants-per-
- * seat ratio keeps its locale decimal comma, because that one *is* a decimal.
+ * missing. The location line is the one deliberate exception (MIGRATION.md
+ * §9b.4): it always renders, because a school name without its commune and
+ * region cannot be looked up or told apart from its namesakes.
  */
 export function RecommendationCard({
   item,
-  currentUnmatchedRisk,
+  appendedWishRank,
   selected,
   onSelectedChange,
 }: {
   item: RecommendationItem;
-  /** `current_unmatched_risk` of the same response — the "before" half of the
-   *  impact sentence. */
-  currentUnmatchedRisk: number | null;
+  /** `appended_wish_rank` of the same response — the position
+   *  `final_chance_if_appended` assumes. */
+  appendedWishRank: number | null;
   selected: boolean;
   onSelectedChange: (selected: boolean) => void;
 }) {
@@ -77,10 +70,8 @@ export function RecommendationCard({
     t("improve.card.noInformation");
 
   const distance = formatDistanceKm(item.distance_km, locale);
-  const showImpact =
-    isFiniteNumber(currentUnmatchedRisk) &&
-    isFiniteNumber(item.projected_unmatched_risk);
-  const noInformation = t("improve.card.noInformation");
+  const showChance =
+    isFiniteNumber(item.final_chance_if_appended) && appendedWishRank !== null;
 
   // A candidate the API could not map back to a `program_id` cannot be appended
   // to the list, which stores ids only (§10). It is still shown — it is a real
@@ -113,72 +104,22 @@ export function RecommendationCard({
           </p>
         ) : null}
 
-        {showImpact ? (
-          <ToneAlert
-            tone={riskLevelTone(item.risk_level)}
-            data-testid="recommendation-impact"
+        {showChance ? (
+          <div
+            className="flex flex-col gap-0.5 rounded-lg bg-muted/60 p-3"
+            data-testid="recommendation-chance"
           >
-            {t("improve.card.appendPreview", {
-              current: formatPercent(currentUnmatchedRisk, locale),
-              projected: formatPercent(item.projected_unmatched_risk, locale),
-            })}
-          </ToneAlert>
+            <span className="text-sm text-muted-foreground">
+              {t("improve.card.chanceAppended", { rank: appendedWishRank })}
+            </span>
+            <span className="text-2xl font-semibold tabular-nums">
+              {formatPercent(item.final_chance_if_appended, locale)}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {t("improve.card.chanceNote")}
+            </span>
+          </div>
         ) : null}
-
-        {isFiniteNumber(item.chance_if_considered) ? (
-          <p className="text-sm">
-            {t.rich("improve.card.chanceIfReached", {
-              chance: formatPercent(item.chance_if_considered, locale),
-              b: (chunks) => (
-                <strong className="font-semibold">{chunks}</strong>
-              ),
-            })}
-          </p>
-        ) : null}
-
-        <p className="text-xs text-muted-foreground">{t("improve.card.why")}</p>
-
-        <Popover>
-          <PopoverTrigger asChild>
-            <Button variant="ghost" size="sm" className="self-start">
-              <CalculatorIcon aria-hidden="true" data-icon="inline-start" />
-              {t("improve.card.calcTrigger")}
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent
-            align="start"
-            className="w-80"
-            aria-label={t("improve.card.calcTrigger")}
-          >
-            <dl className="flex flex-col gap-1.5">
-              <Detail
-                label={t("improve.card.capacity")}
-                value={
-                  isFiniteNumber(item.capacity)
-                    ? formatBareInt(item.capacity)
-                    : noInformation
-                }
-              />
-              <Detail
-                label={t("improve.card.applicantsPerSeat")}
-                value={
-                  formatRatio(item.applicants_per_seat, locale) ?? noInformation
-                }
-              />
-              <Detail
-                label={t("improve.card.estimatedMtbRank")}
-                value={
-                  isFiniteNumber(item.estimated_mtb_rank)
-                    ? formatBareInt(item.estimated_mtb_rank)
-                    : noInformation
-                }
-              />
-            </dl>
-            <p className="text-xs text-muted-foreground">
-              {t("improve.card.assumption")}
-            </p>
-          </PopoverContent>
-        </Popover>
 
         <div className="flex items-start gap-2 border-t border-border pt-3">
           <Checkbox
@@ -197,14 +138,5 @@ export function RecommendationCard({
         </div>
       </CardContent>
     </Card>
-  );
-}
-
-function Detail({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-baseline justify-between gap-3">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd className="font-medium tabular-nums">{value}</dd>
-    </div>
   );
 }

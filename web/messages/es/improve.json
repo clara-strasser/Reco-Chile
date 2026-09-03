@@ -1,5 +1,5 @@
 {
-  "title": "4. Mejorar la lista de preferencias",
+  "title": "Mejora tu lista",
   "heading": "4. Programas similares recomendados",
   "subtitle": "Programas sugeridos",
   "findMore": "Buscar programas adicionales aceptables",
@@ -19,7 +19,7 @@
     "sectionTitle": "Mejorar las estimaciones de distancia — opcional",
     "heading": "Dirección del hogar para calcular distancia",
     "label": "Dirección de tu hogar",
-    "help": "Opcional. Se usa solo para calcular distancia/proximidad a los programas recomendados. Si queda vacío, la proximidad se estima desde la lista actual. La dirección se geocodifica con OpenStreetMap/Nominatim al hacer clic en el botón.",
+    "help": "Opcional. Sin ella, la distancia se mide desde tu lista actual.",
     "hint": "Ingresa una dirección y luego haz clic en el botón para calcular las distancias desde el hogar en lugar del centro de la lista actual.",
     "intro": "Ingresa una dirección del hogar para medir la distancia desde allí. De lo contrario, la distancia se estima a partir de la lista de preferencias actual.",
     "use": "Usar esta dirección para la distancia",
@@ -52,7 +52,8 @@
     "regionApproximation": "aproximación regional"
   },
   "count": {
-    "label": "Número de recomendaciones"
+    "label": "Número de recomendaciones",
+    "question": "¿Cuántas recomendaciones quieres?"
   },
   "displaySettings": "Configuración de visualización de recomendaciones",
   "card": {
@@ -71,7 +72,9 @@
     "assumption": "Esta estimación supone que el programa se agrega al final y que no se declara ninguna prioridad especial.",
     "riskLegend": "Los colores de las filas reflejan el riesgo sin cupo proyectado después de agregar el programa: verde por debajo del umbral suave ({soft}), naranja entre los umbrales suave y duro, y rojo en o por encima del umbral duro ({hard}).",
     "flaggedAtRisk": "Marcado en riesgo",
-    "noInformation": "Sin información"
+    "noInformation": "Sin información",
+    "chanceAppended": "Probabilidad de quedar como tu preferencia #{rank}",
+    "chanceNote": "Si agregas este programa al final de tu lista actual."
   },
   "criteria": {
     "criterion": "Criterio",

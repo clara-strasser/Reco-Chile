@@ -10,7 +10,7 @@
  *   so this module maps them back through the response's own wishes.
  * - **Enumerated values stay English codes on the wire** and are translated
  *   from `enums.*`: `Unmatched` and the four priority tiers. School names are
- *   shown verbatim — the mirror of `sae_app.i18n.display_outcome_label`.
+ *   shown verbatim.
  * - **A program is never shown without its commune and region** (§9b item 4).
  *   `WishResult` carries neither, so the location is resolved client-side from
  *   `/programs/{id}` through `usePrograms` — the same lookup the wish cards and

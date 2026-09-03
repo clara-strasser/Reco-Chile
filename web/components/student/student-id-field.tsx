@@ -10,22 +10,21 @@ import { cn } from "@/lib/utils";
 import {
   checkStudentIdentifier,
   type StudentIdCheck,
-  type StudentIdFailureReason,
   type StudentIdKind,
 } from "@/lib/validation/student-id";
 
 import { WhyWeAsk } from "./why-we-ask";
 
 /**
- * Message id per failure reason. `format` covers "neither a RUN nor an IPE",
- * which is exactly what `errors.invalidStudentId` describes; a well-formed RUN
- * body with the wrong verifier gets the specific check-digit message.
+ * Message id per non-empty failure reason. `format` covers "neither a RUN nor
+ * an IPE", which is exactly what `errors.invalidStudentId` describes; a
+ * well-formed RUN body with the wrong verifier gets the specific check-digit
+ * message. An empty field shows no feedback line at all.
  */
 const FAILURE_KEY = {
-  empty: "student.idRequiredHint",
   format: "errors.invalidStudentId",
   check_digit: "errors.invalidRunCheckDigit",
-} as const satisfies Record<StudentIdFailureReason, string>;
+} as const;
 
 /**
  * The two accepted identifier shapes, as they are named in the confirmation
@@ -39,7 +38,6 @@ const KIND_NAME = {
 
 const STUDENT_ID_INPUT_ID = "student-id";
 const FEEDBACK_ID = "student-id-feedback";
-const HELP_ID = "student-id-help";
 
 type StudentIdFeedbackState = "valid" | "empty" | "invalid";
 
@@ -98,46 +96,37 @@ export function StudentIdField() {
         autoCorrect="off"
         spellCheck={false}
         aria-invalid={state === "invalid" || undefined}
-        aria-describedby={`${FEEDBACK_ID} ${HELP_ID}`}
+        aria-describedby={state === "empty" ? undefined : FEEDBACK_ID}
       />
-      <p
-        id={FEEDBACK_ID}
-        // `role="status"` already implies `aria-live="polite"`.
-        role="status"
-        data-testid={FEEDBACK_ID}
-        data-state={state}
-        className={cn(
-          "flex items-start gap-1.5 text-sm",
-          // Green for accepted, red for rejected. shadcn has no `success`
-          // token, hence a raw palette colour; the green/orange/red of the
-          // *risk* badges is a different scale and comes from `/meta`
-          // thresholds in Phase 4 (MIGRATION.md §4.4).
-          // emerald-700, not -600: #009966 on white is 3.7:1, below the 4.5:1
-          // AA floor for this 14px line (axe `color-contrast`, serious).
-          state === "valid" && "text-emerald-700 dark:text-emerald-400",
-          state === "invalid" && "text-destructive",
-          state === "empty" && "text-muted-foreground",
-        )}
-      >
-        {state === "valid" ? (
-          <CircleCheckIcon
-            className="mt-0.5 size-4 shrink-0"
-            aria-hidden="true"
-          />
-        ) : null}
-        {state === "invalid" ? (
-          <CircleAlertIcon
-            className="mt-0.5 size-4 shrink-0"
-            aria-hidden="true"
-          />
-        ) : null}
-        {check.ok
-          ? t("student.idValid", { kind: KIND_NAME[check.kind] })
-          : t(FAILURE_KEY[check.reason])}
-      </p>
-      <p id={HELP_ID} className="text-xs text-muted-foreground">
-        {t("student.idHelp")}
-      </p>
+      {check.ok ? (
+        <p
+          id={FEEDBACK_ID}
+          // `role="status"` already implies `aria-live="polite"`.
+          role="status"
+          data-testid={FEEDBACK_ID}
+          data-state={state}
+          className={cn(
+            "flex items-start gap-1.5 text-sm",
+            // emerald-700, not -600: #009966 on white is 3.7:1, below the 4.5:1
+            // AA floor for this 14px line (axe `color-contrast`, serious).
+            "text-emerald-700 dark:text-emerald-400",
+          )}
+        >
+          <CircleCheckIcon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          {t("student.idValid", { kind: KIND_NAME[check.kind] })}
+        </p>
+      ) : check.reason === "empty" ? null : (
+        <p
+          id={FEEDBACK_ID}
+          role="status"
+          data-testid={FEEDBACK_ID}
+          data-state={state}
+          className="flex items-start gap-1.5 text-sm text-destructive"
+        >
+          <CircleAlertIcon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          {t(FAILURE_KEY[check.reason])}
+        </p>
+      )}
     </div>
   );
 }

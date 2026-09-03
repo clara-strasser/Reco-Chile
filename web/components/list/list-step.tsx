@@ -4,15 +4,18 @@
  * Step 2 — build and order the preference list (MIGRATION.md §4.1, §4.2;
  * prototype: `app.py` lines 242-470 plus `ui_wish_builder`).
  *
- * Section order is the prototype's, top to bottom:
+ * Section order is the prototype's, top to bottom, with one addition: the
+ * "I have not yet decided the exact order" ties toggle moved here from step 1
+ * (MIGRATION.md §9b) since it governs how *this* list gets built and ordered.
  *
  *   heading + one caption that depends on the mode
+ *   the ties toggle (`EquivalenceSwitch`)
  *   "N recommended programs were added…"      (returning from step 4)
  *   filter panel                              (only "No — help me build it")
  *   program search + Add
  *   the wish list itself
  *   "some programs use imputed calibration"   (+ "What does this mean?")
- *   the compatible-order count                (ties mode only)
+ *   the over-cap order-count warning           (ties mode, over the limit only)
  *
  * The step owns three things the individual components deliberately do not:
  * the `/meta.max_wishes` limit it hands to the store (so every gate — this
@@ -27,6 +30,7 @@ import { CircleCheckIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
+import { EquivalenceSwitch } from "@/components/list/equivalence-switch";
 import { FilterPanel } from "@/components/list/filters/filter-panel";
 import { ImputedNotice } from "@/components/list/imputed-notice";
 import { OrderCount } from "@/components/list/order-count";
@@ -153,6 +157,8 @@ export function ListStep() {
       leadTestId="list-caption"
       lead={needsBuilder ? t("filters.intro") : t("list.order.preferenceHint")}
     >
+      <EquivalenceSwitch />
+
       {addedNotice > 0 ? (
         // `role="status"` (polite) rather than the `Alert` default of
         // `role="alert"`: this confirms what the family just asked for, and it
@@ -196,12 +202,6 @@ export function ListStep() {
         ) : null}
 
         <WishList />
-
-        {wishes.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {t("list.notices.addAtLeastOne")}
-          </p>
-        ) : null}
       </section>
 
       <ImputedNotice imputed={anyImputed} />

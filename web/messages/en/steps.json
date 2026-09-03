@@ -1,8 +1,8 @@
 {
   "student": "Your details",
-  "list": "Build the list",
-  "result": "Review the result",
-  "improve": "Improve the list",
+  "list": "Build your list",
+  "result": "Review your results",
+  "improve": "Improve your list",
   "back": "Back",
   "continue": "Continue",
   "progress": "Step {current} of {total}",

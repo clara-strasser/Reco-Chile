@@ -80,10 +80,6 @@ export function AddressSection({
         </Popover>
       </div>
 
-      <p className="text-sm text-muted-foreground">
-        {t("improve.address.intro")}
-      </p>
-
       <div className="flex flex-col gap-2">
         <Label htmlFor="home-address">{t("improve.address.label")}</Label>
         <Input

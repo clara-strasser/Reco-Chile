@@ -117,7 +117,14 @@ export function ProgramSearch({
       className={className ?? "flex flex-col gap-1.5"}
       data-testid="program-search"
     >
-      <Label id="program-search-label" htmlFor="program-search-trigger">
+      {/* The step's own "Search and add programs" heading already says this;
+          kept for the accessible name `aria-labelledby` below composes, just
+          not shown twice. */}
+      <Label
+        id="program-search-label"
+        htmlFor="program-search-trigger"
+        className="sr-only"
+      >
         {t("search.label")}
       </Label>
       <div className="flex flex-wrap items-center gap-2">

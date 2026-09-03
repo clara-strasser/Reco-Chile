@@ -6,29 +6,42 @@
  * The prototype (and the wizard until now) let step 3 flow into step 4 through
  * one anonymous Continue, which reads as "you are not done yet" even for a list
  * the family is happy with. Product feedback round 1 asks for the choice to be
- * explicit: a primary *I'm happy — finish* that leaves the wizard, and a
- * secondary *not happy — help me improve my list* that goes to step 4.
+ * explicit: a primary *I'm happy — finish*, and a secondary *not happy — help
+ * me improve my list* that goes to step 4.
  *
- * Both are links, not buttons: they are plain navigations, so they open in a new
- * tab, are focusable, and work before hydration. The bottom `WizardNav` still
- * renders its own Continue for step 3 (it belongs to the shell, not to this
- * step) — see `notes_for_next_phase` in the F1 log.
+ * Feedback round 2 changed where "finish" goes: it used to open the completion
+ * page at `FINISH_PATH`; it now clears the wizard and returns to the welcome
+ * page, the same thing that page's own "start over" did. `/finish` is
+ * consequently unreachable from the UI.
+ *
+ * Finish is therefore a button, not a link — it has to clear the store before
+ * it navigates. `router.replace`, not `push`: the wizard the family just
+ * finished must not be one Back press away, and `reset()` clears `listExists`,
+ * so the guard would bounce a Back into the wizard here anyway. Improve stays a
+ * link: it is a plain navigation, so it is focusable, opens in a new tab and
+ * works before hydration.
  */
 
 import { ArrowRightIcon, CheckIcon, SparklesIcon } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Button } from "@/components/ui/button";
-import { FINISH_PATH, stepPath } from "@/components/wizard/steps";
-import { Link } from "@/i18n/navigation";
+import { stepPath, WELCOME_PATH } from "@/components/wizard/steps";
+import { Link, useRouter } from "@/i18n/navigation";
+import { useWizardStore } from "@/lib/store/wizard";
 
-// Both destinations are locale-free paths — `Link` from `@/i18n/navigation`
-// adds the `[locale]` segment. `FINISH_PATH` is its own constant rather than a
-// `stepPath(...)` because `finish` is not one of the four `STEP_SLUGS`: it is
-// where the wizard ends, not a fifth step with a gate.
+// Both destinations are locale-free paths — `Link` and `useRouter` from
+// `@/i18n/navigation` add the `[locale]` segment.
 
 export function ResultActions() {
   const t = useTranslations("result.next");
+  const router = useRouter();
+  const reset = useWizardStore((state) => state.reset);
+
+  function finish() {
+    reset();
+    router.replace(WELCOME_PATH);
+  }
 
   return (
     <section className="flex flex-col gap-3" data-testid="result-actions">
@@ -38,16 +51,14 @@ export function ResultActions() {
         <div className="flex flex-col items-start gap-2 rounded-lg border border-border p-4">
           <Button
             size="lg"
-            asChild
+            onClick={finish}
             // Long copy wraps instead of running past the card on a 360 px
             // phone: `Button` is `whitespace-nowrap` with a fixed height.
             className="h-auto min-h-11 py-2.5 text-left whitespace-normal"
             data-testid="result-finish"
           >
-            <Link href={FINISH_PATH}>
-              <CheckIcon aria-hidden="true" data-icon="inline-start" />
-              {t("finish")}
-            </Link>
+            <CheckIcon aria-hidden="true" data-icon="inline-start" />
+            {t("finish")}
           </Button>
           <p className="text-sm text-muted-foreground">{t("finishHint")}</p>
         </div>

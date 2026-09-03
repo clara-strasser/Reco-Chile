@@ -2,22 +2,39 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Migration in progress
+## What this is
 
-The Streamlit UI is being replaced by a Next.js + shadcn/ui wizard in `web/`,
-with FastAPI (`api.py`) as the only backend. **`MIGRATION.md` is the source of
-truth** for decisions, the API contract, the wizard/state design, the phase
-plan, and the phase log. Before touching anything, check which phase is
-active in `MIGRATION.md` §9 and stay inside that phase's scope and
-"must not touch" list.
+Reco Chile estimates a student's assignment probabilities in Chile's *Sistema de
+Admisión Escolar* (SAE). Three layers, one direction of dependency:
 
-Decisions that are locked (do not re-open them in code or comments):
+- **`sae_app/`** — the Python calculation engine. The source of truth for every
+  number. Streamlit-free.
+- **`api.py`** — a thin FastAPI adapter over the engine. The only backend.
+- **`web/`** — a Next.js (App Router) + shadcn/ui wizard. It formats and
+  explains; **it never computes a probability**. Thresholds and option lists
+  come from `GET /meta`; duplicating a constant in TypeScript is a bug.
 
-- Python `sae_app/` stays the calculation engine; nothing numerical is ported to TypeScript.
-- Monorepo: `web/` next to `sae_app/`; TS API types are generated from the FastAPI OpenAPI schema, never hand-written.
-- Four wizard steps: Student → Build list → Result → Improve.
-- Streamlit stays runnable as the parity reference until Phase 7 deletes it.
-- Phases are executed as one `Workflow` run each with Opus 5 agents and a human gate between phases (`MIGRATION.md` §8).
+`README.md` documents the risk model (MTB hash → priority-adjusted rank →
+hypergeometric availability → cumulative assignment probability). Read it before
+touching `mtb_engine.py`.
+
+### The migration is done and Streamlit is gone
+
+`app.py`, `sae_app/ui_*`, `sae_app/session_state.py`, `.streamlit/` and the
+`streamlit` dependency were deleted after the cutover. There is no second UI and
+no parity reference — do not reintroduce either, and do not add an
+`import streamlit` anywhere. CI enforces this: it imports `api` with the
+`streamlit` module blocked.
+
+`docs/MIGRATION.md` is kept as **historical context only**. Its API contract
+(§3), wizard and state design (§4) and product-feedback record (§9b) still
+describe the app accurately, and code comments across `sae_app/`, `api.py` and
+`web/` cite those section numbers — those references say `MIGRATION.md`
+unqualified and mean that file. What is *no longer* true is its process framing:
+there is no active phase and nothing is gated on it. Do not plan work out of it.
+
+Comments that mention `app.py` or `ui_*` describe where a behaviour came from.
+They are provenance, not a live reference — the code they name no longer exists.
 
 ## Commands
 
@@ -25,126 +42,253 @@ Decisions that are locked (do not re-open them in code or comments):
 
 ```bash
 python -m venv .venv && source .venv/bin/activate
-python -m pip install -r requirements.txt          # + requirements-dev.txt once Phase 0 lands
+.venv/bin/python -m pip install -r requirements.txt -r requirements-dev.txt
 
-python -m streamlit run app.py     # Streamlit UI (parity reference until Phase 7)
-uvicorn api:app --reload           # FastAPI JSON API — the backend for web/
-pytest                             # engine golden tests + API contract tests (from Phase 0)
-python scripts/export_openapi.py   # regenerate web/lib/api/openapi.json (from Phase 1)
+.venv/bin/python -m uvicorn api:app --reload   # the backend for web/
+pytest                                         # golden engine tests + API contract tests
+python scripts/export_openapi.py               # regenerate web/lib/api/openapi.json
 ```
 
-Until Phase 0 lands there is no test suite, linter config, or CI; verify by
-running the app. From Phase 0 on, `pytest` must stay green — the golden
-fixtures under `tests/fixtures/golden/` define numerical parity and are
-regenerated only by an explicit decision recorded in `MIGRATION.md`.
+`pytest` must stay green. The golden fixtures under `tests/fixtures/golden/`
+are the engine's numerical contract — see [Tests](#tests).
 
-### Web (from Phase 2)
+### Web
 
 ```bash
 cd web
 pnpm install
-pnpm dev                           # expects API_BASE_URL (default http://localhost:8000)
-pnpm build && pnpm lint && pnpm test && pnpm e2e
+pnpm dev                                       # expects API_BASE_URL (default http://localhost:8000)
+pnpm lint && pnpm format:check && pnpm test && pnpm build && pnpm e2e
+pnpm api:types                                 # openapi.json -> lib/api/schema.d.ts
 ```
 
-Node ≥ 20 (26 installed via Homebrew) and pnpm 11 are required. `pnpm e2e` starts
-both uvicorn (from the repo `.venv`) and `next dev` itself.
+Node ≥ 20, pnpm from `package.json`'s `packageManager` field. `pnpm e2e` starts
+both uvicorn (from the repo `.venv`) and `next dev` itself. `web/README.md` has
+the full detail on the API client, the proxy, Docker and CI.
 
-### Python version
+### Python on macOS
 
-Requires Python 3.10+, pinned to `3.12` in `.python-version` (read by pyenv, uv,
-mise, and asdf alike — the file is intentionally tool-neutral, and a partial
-`3.12` rather than an exact patch version).
-
-This matters on macOS: `/usr/bin` precedes `/opt/homebrew/bin` in a default PATH,
-so a bare `python3` is system Python 3.9, and `api.py` cannot import under it —
-its pydantic models use PEP 604 unions (`int | None`) with
-`from __future__ import annotations`, so pydantic evaluates them as strings at
-runtime and 3.9 raises `TypeError`. Use the pyenv shim (`python`), not `python3`.
+`/usr/bin` precedes `/opt/homebrew/bin` in a default PATH, so a bare `python3`
+is system Python 3.9 and **`api.py` cannot import under it**: its pydantic
+models use PEP 604 unions (`int | None`) with `from __future__ import
+annotations`, so pydantic evaluates them as strings at runtime and 3.9 raises
+`TypeError`. Requires 3.10+; use the repo's `.venv` interpreter by path — that
+is exactly what `web/playwright.config.ts` does.
 
 Dependencies are plain `requirements.txt` with `>=` lower bounds, deliberately —
 no lockfile, no project-manager config, so collaborators are not pushed onto any
 one tool. The tradeoff is that installs are not reproducible: a fresh install
-currently resolves to pandas 3.x and numpy 2.x. The engine has been smoke-tested
-against pandas 3.0.5 / numpy 2.5.2 / scipy 1.18.0 on Python 3.12.13.
+resolves to pandas 3.x / numpy 2.x. Smoke-tested against pandas 3.0.5 /
+numpy 2.5.2 / scipy 1.18.0 on Python 3.12.13.
 
-Set `APP_DEBUG = True` in `sae_app/constants.py` to surface full tracebacks in the Streamlit UI (`st.exception`) instead of the generic error message.
+## Frontend style guide
 
-## Architecture
+These are product decisions made *after* the migration, by reviewing the running
+app. They override prototype parity: where this section and anything
+`docs/MIGRATION.md` says about copy or layout disagree, this section wins. When
+adding or editing any family-facing string, check it against all of them.
 
-Two entry points sit on top of one shared calculation core in `sae_app/`:
+### Voice
 
-- `app.py` — Streamlit page orchestration only. It reads/validates the calibration CSVs, builds the program mapping, renders each numbered section, and calls into `sae_app`. No calculation logic belongs here. Scheduled for deletion in Phase 7.
-- `api.py` — thin HTTP adapter over the same engine and the backend of `web/`. It always runs the equivalence-class pipeline: a wish without an explicit `equivalence_group` becomes a singleton group equal to its position, which is mathematically identical to strict ranking, so one code path covers both modes.
-- `web/` (from Phase 2) — Next.js App Router, shadcn/ui, next-intl, zustand. It formats and explains; it never computes a probability. All thresholds and option lists come from `GET /meta`, nothing is hard-coded.
+1. **Second person, always.** "you" / "your" / "tú". Never "the family", "the
+   student", "the applicant". Step titles use the possessive: *Your details*,
+   *Build your list*, *Review your results*, *Improve your list* — "your", not
+   "the".
+2. **Positive framing.** The tool *calculates your chances*; it does not
+   "review the risk of your list". No alarm vocabulary in user-facing copy —
+   "risk", "attention level", "warning", "unmatched risk" are out. (The engine
+   and the API still use those names internally; only the copy is reframed.)
+   Warnings that report an actual *failure* stay — an empty result or a request
+   that errored still has to say so.
+3. **No jargon.** Never surface: MTB / tie-break lottery, modulo-11 check digit,
+   equivalence class, strict ranking, attention level, calibration thresholds,
+   percentile. Say what the thing does instead — "Use this option to compare
+   different possible rankings of your programs."
+4. **Say it once.** No helper line under an input that repeats the label or the
+   popover; no lead sentence that repeats a caveat already shown below it. If a
+   sentence appears twice on a screen, delete one.
+5. **Show the answer, not the method.** Step 3 is one box: the most likely
+   program, its location, which preference it is, the estimated chance, and a
+   one-line caveat. Everything else the prototype showed there was removed on
+   purpose (`components/result/result-step.tsx` documents exactly what and why).
 
-`README.md` documents the risk model in detail (MTB hash → priority-adjusted rank → hypergeometric availability → cumulative assignment probability). Read it before changing anything in `mtb_engine.py`.
+### Layout of information
+
+6. **Explanations live behind an info affordance**, never as a standing
+   paragraph. The pattern is a `?`/info icon button next to the label that opens
+   a popover — `components/student/why-we-ask.tsx` ("Why do we ask for this?")
+   and `components/list/equivalence-switch.tsx` ("What does this mean?"). Copy
+   that a reader only sometimes needs goes there.
+7. **A control that *is* the page's question stays out in the open.** Step 4
+   opens with the recommendation-count slider (default 3), not with a
+   disclosure hiding it.
+8. **Consent is its own screen.** `/[locale]/disclaimer` — the two "keep in
+   mind" points and a checkbox that gates step 1. Legal caveats are not
+   sprinkled into the form steps.
+9. **Every program is named with its commune and region**, both, everywhere it
+   is listed or chosen: combobox rows, wish cards, recommendation cards, the
+   result box, the finish page. Several hundred Chilean schools share a name.
+   The rule and its single documented exception live in
+   `web/components/list/program-location.ts`; import from there rather than
+   formatting a location line by hand.
+
+### Visual
+
+10. **Theme:** `web/app/globals.css`. Accent `#1F6FEB`, white background,
+    `#F6F7F9` secondary surface, `#16191D` text, `#E4E7EB` hairline borders,
+    `0.5rem` radius, no webfont (system sans). Base text is 15px via
+    `--text-base`, not via the root font size, so Tailwind's spacing scale stays
+    on a 16px rem — keep it that way. Light mode is the only mode in practice;
+    `.dark` tokens exist but nothing toggles them. In shadcn's token
+    vocabulary `--accent` is the neutral hover surface — the brand accent is
+    `--primary`; do not remap it.
+11. **shadcn primitives in `web/components/ui/` are generated and not
+    hand-edited**, with one documented exception: `button.tsx` uses
+    `rounded-full`. Re-apply that after regenerating.
+12. **One centred column.** The step title is the page's only `<h1>`; the header
+    brand is a `<p>`; sections below open at `<h2>`. Spacing is flex + `gap-*`,
+    not margins. Prominent results go in a `Card`; secondary lines use
+    `text-muted-foreground`; lucide icons are decorative and get
+    `aria-hidden="true"`.
+13. **Keyboard operability is a requirement, not a nice-to-have.** Strict-mode
+    reordering offers drag-and-drop **and** up/down buttons; focus moves to the
+    `<h1>` on a step change (`components/wizard/step-page.tsx`). `pnpm e2e`
+    includes an axe pass (`e2e/a11y.spec.ts`).
+
+## Web conventions
+
+- Wizard steps: `web/app/[locale]/(wizard)/{student,list,result,improve}/page.tsx`.
+  The stepper, the step guard and the Back/Continue bar live in the group
+  layout. Outside the group and outside the stepper: `/[locale]` (welcome),
+  `/[locale]/disclaimer`, and `(wizard)/finish` (rendered without the rail).
+- Step components go in `web/components/{student,list,result,improve}/`, shared
+  wizard chrome in `web/components/wizard/`.
+- **State lives in `web/lib/store/wizard.ts`** (zustand). It is the source of
+  truth for the reachability rules (`canEnterStep`, `canContinue`) and for the
+  invalidation rules, which are documented as a table in its module docstring.
+  Any new input that affects results needs a row there and an invalidation.
+- `studentId`, the simulation result and the geocoded home are **never
+  persisted** — no `localStorage`/`sessionStorage`, no URL params. Only
+  `wishes`, `listExists`, `useEquivalenceClasses`, `disclaimerAcknowledged` and
+  `filters` go to `sessionStorage`.
+- The browser reaches FastAPI **only** through the proxy route handler
+  `web/app/api/[...path]/route.ts` (logic in `lib/api/proxy.ts`). Never
+  hard-code the Python origin in client code, and **never log a request body**
+  there — bodies carry the RUN/IPE and the home address.
+- `lib/api/openapi.json` and `lib/api/schema.d.ts` are generated, never
+  hand-edited: change `api.py`, run `scripts/export_openapi.py`, then
+  `pnpm api:types`.
+- The address is sent to `/geocode` only on an explicit button click.
+- The store's `simulation` is dropped, not merely flagged stale, when an input
+  changes — a stale number must never be on screen.
+
+## Engine and API conventions
 
 ### The program label is the join key (engine) — the program id is the join key (wire)
 
-`build_program_mapping(calib)` returns an ordered `dict[display_label, pd.Series]`. That human-readable display label — not the RBD or program code — is what wish-list DataFrames store in the `PROGRAM` column, and it is how every downstream lookup finds a program row. Label construction (`make_program_option_label`) disambiguates duplicates by appending detail and finally `· code <program_code>`, so labels are stable within a single loaded dataset but change if the data or labelling rules change. `app.py` handles labels that vanish from the data by dropping them from the wish list with a warning.
+`build_program_mapping(calib)` returns an ordered `dict[display_label,
+pd.Series]`. That human-readable label — not the RBD or program code — is what
+wish-list DataFrames store in the `PROGRAM` column, and how every downstream
+lookup finds a program row. `make_program_option_label` disambiguates duplicates
+by appending detail and finally `· code <program_code>`, so labels are stable
+within one loaded dataset but change if the data or the labelling rules change.
 
-`api.py` layers a stable public identifier over this: `program_id = f"{rbd}:{program_code}"`, with `id_to_label` / `label_to_id` dicts built at startup. HTTP callers — including `web/` — never see labels except as `program_label`, and `web/` stores only `program_id`s.
-
-### Streamlit coupling
-
-The docstrings describe the engine as Streamlit-free, which is true today only of `constants`, `errors`, `text_utils`, `mtb_engine`, `wish_list`, and `program_options`. `data_loading`, `geo`, `recommendations`, `i18n`, `session_state`, and all `ui_*` modules import `streamlit` — mostly for `@st.cache_data` and `st.session_state`. `api.py` therefore still pulls Streamlit in transitively through `data_loading`.
-
-Phase 1 removes this coupling (`sae_app/cache.py`, explicit `lang` parameter, per-request `CandidateRiskCache`). Until then and after: keep new pure-calculation code in the Streamlit-free modules, and never add a new `import streamlit` outside `app.py`, `ui_*`, `session_state.py`, and `ui_common.py`.
+`api.py` layers a stable public identifier over this: `program_id =
+f"{rbd}:{program_code}"`, with `id_to_label` / `label_to_id` built at startup.
+HTTP callers — `web/` included — never see labels except as `program_label`, and
+`web/` stores only `program_id`s.
 
 ### Caching
 
-`load_calibration` / `_load_calibration` and the geo loaders are cached with `@st.cache_data` keyed on **file bytes**, not paths — that is why `load_calibration` reads and passes the bytes of all four CSVs explicitly. Recommendation candidate metrics use a separate manual cache in `recommendations.py`; clear it with `clear_candidate_risk_cache()` whenever the student identifier changes. Its key deliberately excludes the student identifier — keep it that way when the cache moves to `sae_app/cache.py`.
+`sae_app/cache.py` replaces Streamlit's `@st.cache_data` with plain-stdlib
+memoisation. The CSV loaders are keyed on **file bytes**, not paths — that is
+why `load_calibration` reads and passes the bytes of all four CSVs explicitly.
+Geocoding uses a TTL cache. Recommendation candidate metrics use a per-request
+`CandidateRiskCache`; its key deliberately excludes the student identifier —
+keep it that way.
 
 ### i18n contract
 
-Two layers, one rule each:
+- **Python (`sae_app/i18n.py`)**: English source strings *are* the translation
+  keys. `t(key, lang=...)` looks the string up in `TRANSLATIONS["es"]` and falls
+  back to the key unchanged when missing. `lang` is always explicit. It is used
+  for **API error messages only** — every other user-facing string lives in
+  `web/messages/`. Editing an English string silently breaks its Spanish
+  translation — update both.
+- **Web (`web/messages/{es,en}/*.json`)**: semantic keys
+  (`result.outcome.chance`), one file per namespace, merged in `index.ts`. Both
+  locales must have identical key sets — a Vitest test enforces it. Spanish is
+  the default and the locale the product copy is reviewed in; write it first.
+  Enumerated API values (filter options, priority tiers, `Unmatched`) are
+  translated under `enums.*`; school names, communes and program display names
+  are shown verbatim; API `message` fields are shown as-is.
 
-- **Python (`sae_app/i18n.py`)**: English source strings *are* the translation keys. `t("Some English text")` looks the string up in `TRANSLATIONS["es"]` and falls back to the key unchanged when missing. Spanish is the default. Any new or edited user-facing English string needs a matching `es` entry keyed by the exact English text; editing an English string silently breaks its Spanish translation. Dropdown/radio values stay in English internally; `format_option_label` translates only the display. After Phase 1 `t()` takes an explicit `lang` and is used only for API error messages.
-- **Web (`web/messages/{es,en}.json`)**: semantic keys (`result.attention.high`), both files must have identical key sets (a Vitest test enforces this). Enumerated API values (filter options, priority tiers, `Unmatched`) are translated under `enums.*`; school names, communes, and program display names are shown verbatim; API `message` fields are shown as-is.
-
-The API never returns translated enumerated values — only `message` is language-dependent (`?lang=` / `Accept-Language`, default `es`).
+The API never returns translated enumerated values — only `message` is
+language-dependent (`?lang=` / `Accept-Language`, default `es`).
 
 ### Error handling
 
-`MtbEngineError` subclasses (`sae_app/errors.py`) carry a `message_key` plus `message_kwargs` and are **not** pre-translated. The presentation layer translates them: `translate_engine_error` in `app.py`, `_engine_error` in `api.py` (which returns 422 with `{error_key, message, params}`). Raise typed engine errors from calculation code; never call `t()` there. `web/` shows `message` and may branch on `error_key` (e.g. `too_many_equivalence_orders`).
+`MtbEngineError` subclasses (`sae_app/errors.py`) carry a `message_key` plus
+`message_kwargs` and are **not** pre-translated. The presentation layer
+translates: `_engine_error` in `api.py` returns 422 with `{error_key, message,
+params}`. Raise typed engine errors from calculation code; never call `t()`
+there. `web/` shows `message` and may branch on `error_key` (e.g.
+`too_many_equivalence_orders`); a transport failure surfaces as `ApiError` with
+`errorKey === NETWORK_ERROR_KEY`.
 
 ### Column names and thresholds
 
-Every data column name, threshold, file path, and filter option list lives in `sae_app/constants.py`. Use the constants (`PROGRAM`, `WISH_RANK`, `EQUIV_GROUP`, `CAPACITY`, `POP`, …), not string literals — the CSV column names do not match the Python identifiers. `web/` reads thresholds and option lists from `GET /meta`; duplicating a constant in TypeScript is a bug.
+Every data column name, threshold, file path and filter option list lives in
+`sae_app/constants.py`. Use the constants (`PROGRAM`, `WISH_RANK`,
+`EQUIV_GROUP`, `CAPACITY`, `POP`, `MAX_WISHES`, …), not string literals — the
+CSV column names do not match the Python identifiers.
 
 ### Equivalence-class pipeline
 
-Availability depends only on the program and the student's priority flags, never on list position. So the flow is: `prepare_ordered_wishes` → `count_equivalence_orders` (rejected above `MAX_EXACT_EQUIV_PERMUTATIONS = 10000`) → `precompute_equivalence_availability` once, keyed by `wish_availability_cache_key(wish) = (program_label, priority_flags)` → `iter_equivalence_orders` → `compute_equivalence_order_from_precomputed` per permutation, which only recomputes the cumulative products. Do not call `availability()` inside the permutation loop.
+Availability depends only on the program and the student's priority flags, never
+on list position. So: `prepare_ordered_wishes` → `count_equivalence_orders`
+(rejected above `MAX_EXACT_EQUIV_PERMUTATIONS = 10000`) →
+`precompute_equivalence_availability` once, keyed by
+`wish_availability_cache_key(wish) = (program_label, priority_flags)` →
+`iter_equivalence_orders` → `compute_equivalence_order_from_precomputed` per
+permutation, which only recomputes the cumulative products. **Never call
+`availability()` inside the permutation loop.**
 
-### State invalidation (both UIs)
-
-Derived results must be explicitly discarded when an input that affects them changes. The rules are listed once, in `MIGRATION.md` §4.2, and implemented twice: `invalidate_simulation_state` + callbacks in `app.py` (Streamlit) and the zustand store in `web/lib/store/wizard.ts`. The wish list itself is deliberately preserved across mode changes. Any new input that affects results needs the same treatment in both places (until Phase 7) and a row in that table.
+`api.py` always runs this pipeline: a wish without an explicit
+`equivalence_group` becomes a singleton group equal to its position, which is
+mathematically identical to strict ranking, so one code path covers both modes.
 
 ### Data validation
 
-`app.py` runs `required_cols()`, `validate_core_numeric_columns`, and `validate_cumulative_share_columns` after loading and calls `st.stop()` on failure. `api.py` runs the same three checks in `validate_calibration` at lifespan and raises `RuntimeError` so uvicorn refuses to start on bad data.
-
-## Web conventions (from Phase 2)
-
-- Wizard pages live under `web/app/[locale]/(wizard)/{student,list,result,improve}/page.tsx`; the step guard and stepper live in the group layout. A step is reachable only under the conditions in `MIGRATION.md` §4.1.
-- shadcn primitives go in `web/components/ui/` (generated, do not hand-edit); wizard components in `web/components/wizard/`.
-- The browser calls FastAPI only through the proxy route handler `web/app/api/[...path]/route.ts`; never hard-code the Python origin in client code, and never log request bodies in the proxy.
-- `studentId`, the simulation result, and the geocoded home are never persisted (no `localStorage`/`sessionStorage`, no URL params). Only wishes, mode flags, and filters go to `sessionStorage`.
-- The address is sent to `/geocode` only on explicit button click.
-- Strict-mode reordering offers drag-and-drop **and** up/down buttons; keyboard operability is a requirement, not a nice-to-have.
-
-## Working with the migration workflow
-
-- One `Workflow` run per phase, script shape in `MIGRATION.md` §8, every agent with `model: 'opus'`.
-- Work items in one run must touch disjoint files (worktree isolation); split otherwise.
-- After a run: append the run id and gate result to `MIGRATION.md` §9. Do not start the next phase without a human review of the gate and review output.
-- Golden fixtures are regenerated only with an explicit note in §9 explaining why the numbers were allowed to change.
+`api.py` runs `required_cols()`, `validate_core_numeric_columns` and
+`validate_cumulative_share_columns` in `validate_calibration` at lifespan and
+raises `RuntimeError`, so uvicorn refuses to start on bad data.
 
 ## Tests
 
-`tests/golden_runner.py` is the single implementation of "drive the engine the way `app.py` / `ui_recommendations.py` do" and is shared by `tests/generate_golden.py` and the golden tests. When the engine's calling convention changes (Phase 1: explicit `lang`, `CandidateRiskCache`), update the runner — never the fixtures. Regenerating `tests/fixtures/golden/` requires a note in `MIGRATION.md` §9 in the same commit (see the README there).
+- `pytest` — engine golden tests + API contract tests.
+- `cd web && pnpm test` (Vitest) and `pnpm e2e` (Playwright, starts both halves
+  of the stack).
+- `tests/golden_runner.py` is the single implementation of the calling
+  convention the fixtures were frozen at, shared by `tests/generate_golden.py`
+  and the golden tests. It deliberately preserves the prototype's convention —
+  `api.py` reaching the same numbers by a different path is the point. When the
+  engine's calling convention changes, update the runner — **never the
+  fixtures**.
+- Regenerating `tests/fixtures/golden/` means the numbers the product shows a
+  family changed. It needs a deliberate decision and its own commit, with a
+  message saying why (see the README in that directory).
 
 ## Privacy constraints in the code
 
-The RUN/IPE is used only to compute `SHA-256(normalized_id + normalized_rbd)`; the hash input and hex digest are local temporaries and are deliberately never attached to a DataFrame (`attach_mtb_hashes` even drops legacy `lottery_hash_input` / `lottery_hash_hex` columns, and `migrate_legacy_sensitive_state` purges old session state once). Preserve this when touching `mtb_engine.py`. The only outbound network call is Nominatim geocoding, throttled to 1 req/s per process by `geo.py` and triggered only by an explicit user action. The same rules apply to `web/` (see Web conventions).
+- The RUN/IPE is used only to compute `SHA-256(normalized_id + normalized_rbd)`.
+  The hash input and the hex digest are local temporaries and are deliberately
+  never attached to a DataFrame (`attach_mtb_hashes` even drops legacy
+  `lottery_hash_input` / `lottery_hash_hex` columns). Preserve this when
+  touching `mtb_engine.py`.
+- The RUN/IPE never reaches browser storage or the URL, and the Next.js proxy
+  never logs a request body.
+- The only outbound network call is Nominatim geocoding, throttled to 1 req/s
+  per process by `geo.py` and triggered only by an explicit user action. The
+  throttle is per process — run one uvicorn worker, or add shared throttling
+  before scaling.

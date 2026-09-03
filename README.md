@@ -1,6 +1,6 @@
 # Reco Chile — SAE admission-risk simulator
 
-Reco Chile is a bilingual Streamlit application that helps families explore school choices in Chile's *Sistema de Admisión Escolar* (SAE).
+Reco Chile is a bilingual web application that helps families explore school choices in Chile's *Sistema de Admisión Escolar* (SAE). A Next.js wizard (`web/`) presents the results; a FastAPI service (`api.py`) over the Python engine in `sae_app/` computes them.
 
 The app estimates the probability of assignment to each program in a student's wish list, measures the risk of remaining unmatched, tests whether ties between preferences are consequential, and recommends additional programs that can improve the portfolio while remaining similar to the family's revealed preferences.
 
@@ -238,19 +238,16 @@ Verify the interpreter before installing, especially on macOS, where a bare
 python -V                           # expect 3.12.x
 ```
 
-Install the dependencies:
+Install the dependencies and start the API:
 
 ```bash
-python -m pip install -r requirements.txt
+python -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+.venv/bin/python -m uvicorn api:app --reload     # http://localhost:8000
 ```
 
-Run the application:
-
-```bash
-python -m streamlit run app.py
-```
-
-The main dependencies are Streamlit, pandas, NumPy, and SciPy.
+The main dependencies are FastAPI, pandas, NumPy, and SciPy. The API is only
+half the application — start the frontend below as well.
 
 > [!NOTE]
 > `requirements.txt` uses lower-bound (`>=`) pins, so a fresh install resolves to
@@ -260,20 +257,15 @@ The main dependencies are Streamlit, pandas, NumPy, and SciPy.
 
 ### Frontend (`web/`)
 
-A Next.js interface is replacing the Streamlit prototype (see `MIGRATION.md`).
-It computes nothing itself: every number comes from the same `sae_app/` engine,
-served by the FastAPI adapter `api.py`.
+The Next.js wizard is the application's interface. It computes nothing itself:
+every number comes from the `sae_app/` engine, served by the FastAPI adapter
+`api.py`.
 
 Requirements: **Node ≥ 20 LTS** (the major used for development is in
 `web/.nvmrc`) and **pnpm**, whose version is pinned in `web/package.json`
 (`packageManager`); `corepack enable` installs exactly that one.
 
-Two processes, in two terminals:
-
-```bash
-python -m pip install -r requirements-api.txt   # FastAPI only, no Streamlit
-python -m uvicorn api:app --reload               # http://localhost:8000
-```
+Two processes, in two terminals — the API above, and:
 
 ```bash
 cd web
@@ -298,7 +290,7 @@ docker compose up --build       # http://localhost:3000/es/student
 docker compose down
 ```
 
-- `Dockerfile.api` (`python:3.12-slim`) installs `requirements-api.txt`, copies
+- `Dockerfile.api` (`python:3.12-slim`) installs `requirements.txt`, copies
   `api.py`, `sae_app/` and `data/`, and runs `uvicorn` with **one worker**: the
   Nominatim throttle and the per-IP geocode limit are per process, so a second
   worker would double the outbound request rate.
@@ -306,19 +298,20 @@ docker compose down
   standalone output, started with `node server.js` on port 3000 with
   `API_BASE_URL=http://api:8000`.
 - Only the web service publishes a port; the API is reachable inside the compose
-  network only. The Streamlit prototype is not containerized.
+  network only.
 - `TRUST_PROXY` (web) and `SAE_TRUSTED_PROXIES` (api) stay unset in this setup,
   so no `X-Forwarded-For` header is believed and the per-IP geocoding budget
   becomes one shared bucket. That is stricter than per browser, never looser;
   set both only behind a reverse proxy that rewrites the header itself.
 
-Continuous integration runs the same checks — `pytest`, the Streamlit-free
-import check, `pnpm lint`/`format:check`/`tsc`/`test`/`build`, and Playwright —
-in `.github/workflows/ci.yml`.
+Continuous integration runs the same checks — `pytest`, the check that the
+engine imports with Streamlit blocked, `pnpm
+lint`/`format:check`/`tsc`/`test`/`build`, and Playwright — in
+`.github/workflows/ci.yml`.
 
 ## Data files
 
-The application expects a `data/` directory next to `app.py`.
+The application expects a `data/` directory next to `api.py`.
 
 ### Required files
 
@@ -341,42 +334,40 @@ At startup, the app checks required columns, core numeric fields, positive lotte
 
 ```text
 Reco-Chile/
-├── app.py                         # Streamlit entry point and page orchestration
-├── api.py                         # FastAPI adapter over the same engine
-├── requirements.txt               # Streamlit prototype (engine included)
-├── requirements-api.txt           # FastAPI service only, without Streamlit
+├── api.py                         # FastAPI adapter over the engine — the only backend
+├── requirements.txt               # Runtime dependencies of the API + engine
 ├── requirements-dev.txt           # pytest, httpx
 ├── Dockerfile.api                 # Container image for the FastAPI service
 ├── docker-compose.yml             # api + web
 ├── README.md
-├── MIGRATION.md                   # Streamlit → Next.js plan and API contract
+├── CLAUDE.md                      # Conventions, including the frontend style guide
 ├── .github/workflows/ci.yml       # Python, web, and end-to-end checks
 ├── data/                          # Calibration and program metadata
+├── docs/
+│   └── MIGRATION.md               # Streamlit → Next.js migration record (historical)
 ├── scripts/
 │   └── export_openapi.py          # Writes web/lib/api/openapi.json
 ├── tests/                         # pytest: engine goldens and API contract
-│   └── fixtures/golden/           # Frozen pre-migration engine outputs
+│   └── fixtures/golden/           # Frozen engine outputs — the numerical contract
 ├── web/                           # Next.js frontend (see web/README.md)
 └── sae_app/
     ├── __init__.py                # Package overview
-    ├── cache.py                   # In-process caches used outside Streamlit
+    ├── cache.py                   # In-process memoisation for loaders and geocoding
     ├── constants.py               # Columns, thresholds, paths, and configuration
     ├── data_loading.py            # CSV loading, joins, translation, and validation
+    ├── errors.py                  # Typed calculation errors, translated by the caller
     ├── geo.py                     # Coordinates, distance, and Nominatim geocoding
-    ├── i18n.py                    # Spanish/English translations
+    ├── i18n.py                    # Spanish/English strings for API error messages
     ├── mtb_engine.py              # SHA-256 MTB and hypergeometric risk model
-    ├── program_options.py         # Typed program records and dropdown options
+    ├── program_options.py         # Typed program records and program-list options
     ├── recommendations.py         # Similarity and portfolio-risk recommendations
-    ├── session_state.py           # Shared Streamlit state helpers
     ├── text_utils.py              # Text, number, code, and coordinate cleaning
-    ├── ui_common.py               # Shared table formatting
-    ├── ui_recommendations.py      # Recommendation interface
-    ├── ui_simulation.py           # Simulation results and sensitivity display
-    ├── ui_wish_builder.py         # Interactive wish-list editor
     └── wish_list.py               # Wish-list state and equivalence-class handling
 ```
 
-`app.py` intentionally contains only application orchestration. Calculation logic lives in the focused modules under `sae_app/`, with the core MTB engine kept independent from Streamlit.
+`api.py` intentionally contains only HTTP adaptation. Calculation logic lives in the focused modules under `sae_app/`, which has no UI dependency of any kind — the frontend in `web/` formats and explains, and never computes a number.
+
+Until the migration recorded in `docs/MIGRATION.md`, the interface was a Streamlit app (`app.py` plus `sae_app/ui_*`). It was removed after cutover; the engine is unchanged and still reproduces the golden fixtures generated from it.
 
 ## Privacy and external services
 

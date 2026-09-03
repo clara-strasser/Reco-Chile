@@ -1,31 +1,27 @@
 "use client";
 
-import { useTranslations } from "next-intl";
-
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { Card, CardContent } from "@/components/ui/card";
 import { StepPage } from "@/components/wizard/step-page";
 
-import { AboutEstimate } from "./about-estimate";
-import { EquivalenceSwitch } from "./equivalence-switch";
-import { ListChoiceNote } from "./list-choice-note";
 import { PrivacyNote } from "./privacy-note";
-import { ResearchDisclaimer } from "./research-disclaimer";
 import { StudentIdField } from "./student-id-field";
 
 /**
  * Step 1 — identify the student (MIGRATION.md §4.1 row 1; `app.py` lines
  * 176-230).
  *
- * Since MIGRATION.md §9b the step opens with the research-tool disclaimer —
- * the family reads what this is before typing an identifier — and the
- * "is the list already established?" radio is gone: the welcome page asks that
- * question now, and only the answer plus a link back to change it remain.
+ * The research-tool disclaimer moved to its own "Before we continue" page
+ * (`DisclaimerScreen`) ahead of the welcome page's Yes/No choice, so this step
+ * no longer repeats it. The "is the list already established?" radio is gone
+ * too: the welcome page asks that question and owns the answer. The "Your
+ * current situation" note that used to echo that answer back (with a link to
+ * change it) is gone as well — the header's brand link already returns to the
+ * welcome page from anywhere. The "I have not yet decided the exact order"
+ * ties toggle moved to step 2 (`EquivalenceSwitch` in `components/list/`) — it
+ * is a fact about how the *list* gets built, not about the student.
  *
- * So: the disclaimer, the identifier with its "why do we ask" popover, then
- * the current situation — the welcome answer and whether the order is still
- * open. Below them the "about this estimate" caveat and the privacy statement,
- * both closing rather than interrupting the form.
+ * So: just the identifier with its "why do we ask" popover, then the privacy
+ * statement.
  *
  * Continue is *not* wired here. The gate ("RUN/IPE passes the client
  * pre-check") lives in the store, `use-wizard-gating.ts` binds it to the route
@@ -38,30 +34,14 @@ import { StudentIdField } from "./student-id-field";
  * (§7 Phase 3, "mobile layout single column ≤ 640 px").
  */
 export function StudentStep() {
-  const t = useTranslations("student");
-
   return (
-    <StepPage slug="student">
-      <ResearchDisclaimer />
-
+    <StepPage slug="student" lead={null}>
       <Card>
         <CardContent>
           <StudentIdField />
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>{t("situationTitle")}</CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-5">
-          <ListChoiceNote />
-          <Separator />
-          <EquivalenceSwitch />
-        </CardContent>
-      </Card>
-
-      <AboutEstimate />
       <PrivacyNote />
     </StepPage>
   );

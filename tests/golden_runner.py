@@ -1,18 +1,28 @@
-"""Drive the pre-migration engine exactly the way ``app.py`` drives it.
+"""Drive the engine with the exact calling convention the fixtures were frozen at.
 
 Both the fixture generator (``tests/generate_golden.py``) and the golden tests
 (``tests/test_engine_golden.py``) import this module, so the "how the engine is
-called" logic exists once. The call sequences below mirror, step by step:
+called" logic exists once.
 
-* strict simulation      -> ``app.py`` lines around ``prepare_ordered_wishes``/
-                            ``attach_mtb_hashes``/``compute``
-* equivalence simulation -> ``app.py``'s equivalence branch
+This convention is the *baseline*, not a mirror of any current caller. It was
+taken from the Streamlit prototype (``app.py`` and ``sae_app/ui_*``, deleted
+after the migration) at commit ``0a52f56``, and that is precisely why it is
+worth keeping: `api.py` reproducing these numbers through a different code path
+is what proves the migration changed no arithmetic. The sequences are:
+
+* strict simulation      -> ``prepare_ordered_wishes`` / ``attach_mtb_hashes`` /
+                            ``compute``
+* equivalence simulation -> the equivalence branch
                             (``count_equivalence_orders`` cap check,
                             ``precompute_equivalence_availability`` once,
                             then ``iter_equivalence_orders`` +
                             ``compute_equivalence_order_from_precomputed``)
-* recommendations        -> ``sae_app/ui_recommendations.py``
-                            (same constants, same argument order)
+* recommendations        -> ``recommend_similar_programs`` with the constants and
+                            argument order the prototype's recommendation
+                            section passed
+
+When the engine's calling convention changes, update this runner — never the
+fixtures.
 
 Cache note: ``recommend_similar_programs`` owns its candidate-risk cache. No
 ``candidate_cache`` is passed here, so every recommendation run builds a fresh

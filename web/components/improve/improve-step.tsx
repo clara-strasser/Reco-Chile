@@ -1,26 +1,19 @@
 "use client";
 
 import * as React from "react";
-import { useLocale, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import { toast } from "sonner";
 
 import { StepPage } from "@/components/wizard/step-page";
 import { stepNumber, stepPath } from "@/components/wizard/steps";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Disclosure } from "@/components/ui/disclosure";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Slider } from "@/components/ui/slider";
 import { useRouter } from "@/i18n/navigation";
 import type { RecommendationItem } from "@/lib/api/types";
 import { useMeta } from "@/lib/meta";
-import {
-  formatPercent,
-  isFiniteNumber,
-  MISSING_NUMBER,
-  useRecommendations,
-} from "@/lib/recommendations";
+import { isFiniteNumber, useRecommendations } from "@/lib/recommendations";
 import {
   MAX_RECOMMENDATION_COUNT,
   MIN_RECOMMENDATION_COUNT,
@@ -35,19 +28,27 @@ import { ToneAlert } from "./tone-alert";
 /**
  * Step 4 — improve the preference list (MIGRATION.md §4.1 row 4, Phase 5).
  *
- * A port of `sae_app/ui_recommendations.py`, section by section and in the same
- * order: current risk, the "adding at the end costs nothing" note, the method
- * collapsible, the optional home address, the display settings, then one card
- * per suggestion and the button that feeds the selection back into step 2.
+ * Feedback round 2 reduced the page to three things, in this order:
  *
- * Nothing on this page computes a number. `/recommend` re-runs the simulation
- * server-side to obtain `current_unmatched_risk` and returns every figure raw
- * (§3), so the "before → after" sentence and the badge colours are the engine's
- * answers, formatted.
+ *   1. how many suggestions do you want  (a slider, out in the open)
+ *   2. improve distance estimates        (the optional home address)
+ *   3. the suggestions themselves
+ *
+ * What went: the current-unmatched-risk card, the "adding at the end costs
+ * nothing" note, the "How are these programs selected?" collapsible, and the
+ * "Recommendation display settings" collapsible that used to hide the slider.
+ * The warnings that report a *failure* stayed — an empty result or an
+ * unscoreable candidate still has to say so.
+ *
+ * The slider is no longer behind a disclosure because it is now the page's
+ * opening question, and its default dropped from 5 to 3.
+ *
+ * Nothing on this page computes a number: `/recommend` returns every figure
+ * raw (§3), including `final_chance_if_appended`, which is what each card
+ * shows.
  */
 export function ImproveStep() {
   const t = useTranslations();
-  const locale = useLocale();
   const router = useRouter();
   const meta = useMeta();
 
@@ -127,10 +128,6 @@ export function ImproveStep() {
     router.push(stepPath("list"));
   }
 
-  const currentRisk =
-    data !== null && isFiniteNumber(data.current_unmatched_risk)
-      ? formatPercent(data.current_unmatched_risk, locale)
-      : null;
   const hasResponse = data !== null;
   const showSkeleton = loading && !hasResponse;
   // `risk_values_missing` in `ui_recommendations.py`: the candidates were
@@ -142,68 +139,50 @@ export function ImproveStep() {
     items.every((item) => !isFiniteNumber(item.chance_if_considered));
 
   return (
-    <StepPage slug="improve">
-      <Card>
-        <CardContent className="flex items-baseline justify-between gap-4">
-          <span className="text-sm text-muted-foreground">
-            {t("improve.currentRisk")}
-          </span>
+    // No lead sentence: it was `improve.methodBody`, the "how are these
+    // programs selected" paragraph, and round 2 asked for the page not to open
+    // on a block of text. The slider is the first thing now.
+    <StepPage slug="improve" lead={null}>
+      {/* 1. How many suggestions? The page's opening question, so it is not
+          behind a disclosure any more. */}
+      <section
+        role="group"
+        aria-label={t("improve.count.question")}
+        className="flex flex-col gap-2"
+        data-testid="improve-count"
+      >
+        <div className="flex items-baseline justify-between gap-4">
+          <h2 className="text-base font-semibold">
+            {t("improve.count.question")}
+          </h2>
           <span
             className="text-2xl font-semibold tabular-nums"
-            data-testid="current-unmatched-risk"
+            data-testid="recommendation-count"
           >
-            {currentRisk ?? MISSING_NUMBER}
+            {recommendationCount}
           </span>
-        </CardContent>
-      </Card>
-
-      <ToneAlert tone="info">{t("improve.strategicNote")}</ToneAlert>
-
-      <Disclosure label={t("improve.methodTitle")} data-testid="improve-method">
-        <p className="text-sm">{t("improve.methodBody")}</p>
-        <p className="text-sm">{t("improve.methodNote")}</p>
-        <p className="text-xs text-muted-foreground">
-          {t("improve.distance.coordsNote")}
-        </p>
-      </Disclosure>
+        </div>
+        <Slider
+          // The thumb is the control with `role="slider"`; the group label
+          // above names the row, not the input (axe `aria-input-field-name`).
+          aria-label={t("improve.count.question")}
+          value={[recommendationCount]}
+          min={MIN_RECOMMENDATION_COUNT}
+          max={MAX_RECOMMENDATION_COUNT}
+          step={1}
+          onValueChange={([value]) => setRecommendationCount(value)}
+          data-testid="recommendation-count-slider"
+        />
+      </section>
 
       <Separator />
 
+      {/* 2. Improve distance estimates. */}
       <AddressSection
         hardDistanceFilterApplied={data?.hard_distance_filter_applied ?? null}
       />
 
-      <Disclosure
-        label={t("improve.displaySettings")}
-        data-testid="improve-display-settings"
-      >
-        <div
-          role="group"
-          aria-label={t("improve.count.label")}
-          className="flex flex-col gap-2"
-        >
-          <div className="flex items-baseline justify-between gap-4 text-sm">
-            <span>{t("improve.count.label")}</span>
-            <span
-              className="font-medium tabular-nums"
-              data-testid="recommendation-count"
-            >
-              {recommendationCount}
-            </span>
-          </div>
-          <Slider
-            // The thumb is the control with `role="slider"`; the group label
-            // above names the row, not the input (axe `aria-input-field-name`).
-            aria-label={t("improve.count.label")}
-            value={[recommendationCount]}
-            min={MIN_RECOMMENDATION_COUNT}
-            max={MAX_RECOMMENDATION_COUNT}
-            step={1}
-            onValueChange={([value]) => setRecommendationCount(value)}
-            data-testid="recommendation-count-slider"
-          />
-        </div>
-      </Disclosure>
+      <Separator />
 
       {error !== null ? (
         <ToneAlert tone="destructive" data-testid="recommendation-error">
@@ -229,9 +208,6 @@ export function ImproveStep() {
 
       <section className="flex flex-col gap-3">
         <h2 className="text-base font-semibold">{t("improve.subtitle")}</h2>
-        <p className="text-sm text-muted-foreground">
-          {t("improve.selectHint")}
-        </p>
 
         {showSkeleton ? (
           <div className="flex flex-col gap-3" aria-hidden="true">
@@ -250,7 +226,7 @@ export function ImproveStep() {
           <RecommendationCard
             key={item.program_id ?? item.program_label}
             item={item}
-            currentUnmatchedRisk={data?.current_unmatched_risk ?? null}
+            appendedWishRank={data?.appended_wish_rank ?? null}
             selected={
               item.program_id !== null && selectedIds.has(item.program_id)
             }

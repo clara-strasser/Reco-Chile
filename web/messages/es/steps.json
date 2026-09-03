@@ -1,8 +1,8 @@
 {
   "student": "Tus datos",
-  "list": "Armar la lista",
-  "result": "Revisar el resultado",
-  "improve": "Mejorar la lista",
+  "list": "Arma tu lista",
+  "result": "Revisa tus resultados",
+  "improve": "Mejora tu lista",
   "back": "Atrás",
   "continue": "Continuar",
   "progress": "Paso {current} de {total}",

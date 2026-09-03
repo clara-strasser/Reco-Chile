@@ -1,17 +1,22 @@
 {
-  "title": "2. Armar y ordenar la lista de preferencias",
+  "title": "Arma tu lista",
   "current": {
     "title": "Lista de preferencias actual",
-    "empty": "Todavía no hay ningún programa seleccionado. Agrega arriba tu primera preferencia.",
+    "empty": "Todavía no has agregado programas. Agrega arriba tu primera preferencia.",
     "count": "{n} programa(s) seleccionado(s)",
     "useBuilder": "Usa el editor de abajo para ingresar directamente tu lista actual."
   },
   "order": {
     "strictHint": "Ingresa los programas en orden estricto. El primer programa es la opción mejor clasificada, y la probabilidad final de cada opción inferior depende de no obtener las opciones anteriores.",
-    "preferenceHint": "Agrega los programas en el orden que realmente prefieres.",
+    "preferenceHint": "Busca programas, agrégalos y ordénalos por preferencia",
     "reorderHint": "Usa ↑ y ↓ para reordenar tu ranking estricto.",
     "howTitle": "¿Cómo se deben ingresar las preferencias?",
     "howBody": "Orden estricto significa que cada programa tiene un ranking preciso. Las clases de equivalencia permiten que varios programas compartan el mismo grupo de preferencia cuando los consideras empatados."
+  },
+  "ties": {
+    "label": "Todavía no he decidido el orden exacto entre algunos programas",
+    "helpTrigger": "¿Qué significa esto?",
+    "help": "Usa esta opción para comparar distintos órdenes posibles de tus programas."
   },
   "card": {
     "detailsTitle": "Detalles del programa",
@@ -40,8 +45,6 @@
     "imputedBody": "No había observaciones históricas completas para al menos un programa seleccionado, por lo que el modelo usa un valor imputado de 2024. Interpreta esas estimaciones con especial cautela.",
     "removed": "Algunos programas de la lista actual ya no están disponibles en los datos cargados y fueron eliminados: {programs}",
     "recommendationsAdded": "Se agregaron {n} programa(s) recomendado(s) al final de la lista. Revisa las prioridades de los nuevos programas y vuelve a analizar la lista.",
-    "orderCount": "Las clases de equivalencia actuales generan {n} orden(es) estricto(s) compatible(s). La app los probará para ver si los programas empatados llevan al mismo resultado previsto o a resultados distintos.",
-    "addAtLeastOne": "Agrega al menos un programa para habilitar el análisis.",
     "duplicate": "Ese programa ya está en la lista.",
     "maxWishes": "La lista no puede tener más de {max} programas.",
     "imputedWhat": "¿Qué significa esto?"

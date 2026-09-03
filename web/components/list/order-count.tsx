@@ -1,16 +1,16 @@
 "use client";
 
 /**
- * The equivalence-class order count under the list (ties mode only).
+ * The equivalence-class order-count warning under the list (ties mode only).
  *
- * Two states, both taken from the prototype:
- *
- * - within the limit — the caption `app.py` prints before the Analyze button,
- *   "The current equivalence classes generate {n} compatible strict order(s)…";
- * - above `/meta.max_exact_equiv_permutations` — the *same* message the API
- *   returns as 422 `too_many_equivalence_orders`, shown here so the family can
- *   split a group before pressing Continue instead of after
- *   (MIGRATION.md §3: "pre-checked client-side from `/meta`").
+ * Only the over-cap state renders: above `/meta.max_exact_equiv_permutations`,
+ * this is the *same* message the API returns as 422
+ * `too_many_equivalence_orders`, shown here so the family can split a group
+ * before pressing Continue instead of after (MIGRATION.md §3: "pre-checked
+ * client-side from `/meta`"). Within the limit the prototype's informational
+ * count ("The current equivalence classes generate N compatible strict
+ * order(s)…") used to print here too, but it added detail nobody acts on
+ * without also explaining the concept, so it was dropped.
  *
  * The count itself is combinatorics over the family's own grouping — a product
  * of factorials, not a probability — so computing it in the browser does not
@@ -39,23 +39,17 @@ export function OrderCount() {
   const limit = BigInt(meta.max_exact_equiv_permutations);
   const n = format.number(orders);
 
-  if (orders > limit) {
-    return (
-      <Alert variant="destructive" data-testid="order-count-over-cap">
-        <TriangleAlertIcon aria-hidden="true" />
-        <AlertDescription>
-          {t("errors.too_many_equivalence_orders", {
-            n,
-            limit: format.number(meta.max_exact_equiv_permutations),
-          })}
-        </AlertDescription>
-      </Alert>
-    );
-  }
+  if (orders <= limit) return null;
 
   return (
-    <p className="text-sm text-muted-foreground" data-testid="order-count">
-      {t("list.notices.orderCount", { n })}
-    </p>
+    <Alert variant="destructive" data-testid="order-count-over-cap">
+      <TriangleAlertIcon aria-hidden="true" />
+      <AlertDescription>
+        {t("errors.too_many_equivalence_orders", {
+          n,
+          limit: format.number(meta.max_exact_equiv_permutations),
+        })}
+      </AlertDescription>
+    </Alert>
   );
 }

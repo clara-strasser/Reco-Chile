@@ -4,6 +4,7 @@ import type { GeocodeResult, SimulationResponse } from "@/lib/store/types";
 import {
   canContinue,
   canEnterStep,
+  hasAcknowledgedDisclaimer,
   hasListChoice,
   DEFAULT_RECOMMENDATION_COUNT,
   emptyFilters,
@@ -58,9 +59,10 @@ const store = () => useWizardStore.getState();
 function seed(options: { ties?: boolean; programIds?: string[] } = {}) {
   const { ties = false, programIds = ["1001:A", "1002:B", "1003:C"] } = options;
   store().reset();
-  // The welcome answer (§9b item 2) is what unlocks step 1 now, so every
-  // "reachable" fixture has to include it.
+  // The welcome answer and the consent checkbox (§9b item 2) are what unlocks
+  // step 1 now, so every "reachable" fixture has to include both.
   store().setListExists(true);
+  store().setDisclaimerAcknowledged(true);
   store().setStudentId(VALID_RUN);
   store().setUseEquivalenceClasses(ties);
   for (const programId of programIds) store().addWish(programId);
@@ -544,10 +546,16 @@ describe("step gates §4.1", () => {
     expect(canEnterStep(state(), 2)).toBe(false);
 
     store().setListExists(false);
+    // The welcome answer alone is not enough: the consent checkbox still gates.
+    expect(hasAcknowledgedDisclaimer(state())).toBe(false);
+    expect(canEnterStep(state(), 1)).toBe(false);
+    expect(canEnterStep(state(), 2)).toBe(false);
+
+    store().setDisclaimerAcknowledged(true);
     expect(canEnterStep(state(), 1)).toBe(true);
     expect(canEnterStep(state(), 2)).toBe(true);
 
-    // Either answer counts; only `null` locks the step.
+    // Either welcome answer counts; only `null` locks the step.
     store().setListExists(true);
     expect(canEnterStep(state(), 1)).toBe(true);
     store().setListExists(null);
@@ -557,6 +565,7 @@ describe("step gates §4.1", () => {
 
   it("step 2 needs at least one wish", () => {
     store().setListExists(true);
+    store().setDisclaimerAcknowledged(true);
     store().setStudentId(VALID_RUN);
     expect(canContinue(state(), 2)).toBe(false);
     store().addWish("1001:A");
@@ -605,6 +614,7 @@ describe("step gates §4.1", () => {
     // `null` = not even step 1: the welcome page is where the guard sends them.
     expect(lastAllowedStep(state())).toBeNull();
     store().setListExists(false);
+    store().setDisclaimerAcknowledged(true);
     expect(lastAllowedStep(state())).toBe(1);
     store().setStudentId(VALID_RUN);
     expect(lastAllowedStep(state())).toBe(2);
@@ -616,6 +626,7 @@ describe("step gates §4.1", () => {
 
   it("exposes curried selectors for useWizardStore(selector)", () => {
     store().setListExists(true);
+    store().setDisclaimerAcknowledged(true);
     store().setStudentId(VALID_RUN);
     // Called directly here; in a component this is `useWizardStore(selector)`.
     expect(selectCanContinue(1)(store())).toBe(true);
@@ -785,7 +796,7 @@ describe("sessionStorage persistence §4.2", () => {
     };
   };
 
-  it("stores exactly the four allowed slices", () => {
+  it("stores exactly the five allowed slices", () => {
     seed({ ties: true });
     store().setListExists(false);
     store().setFilters({ region: "Metropolitana" });
@@ -793,6 +804,7 @@ describe("sessionStorage persistence §4.2", () => {
     const snapshot = persisted();
     expect(snapshot.version).toBe(WIZARD_PERSIST_VERSION);
     expect(Object.keys(snapshot.state).sort()).toEqual([
+      "disclaimerAcknowledged",
       "filters",
       "listExists",
       "useEquivalenceClasses",
@@ -855,6 +867,7 @@ describe("sessionStorage persistence §4.2", () => {
     ]);
     expect(state.useEquivalenceClasses).toBe(true);
     expect(state.listExists).toBe(true);
+    expect(state.disclaimerAcknowledged).toBe(true);
     expect(state.studentId).toBe("");
     expect(state.simulation).toBeNull();
     expect(state.simulationStale).toBe(true);

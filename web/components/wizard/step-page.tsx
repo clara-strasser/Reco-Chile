@@ -28,16 +28,19 @@ export function StepPage({
 }: {
   slug: StepSlug;
   /**
-   * Replaces the step's static lead sentence. Only step 2 needs it: its caption
-   * depends on whether the family already has a list, which a fixed
-   * `STEP_LEAD_KEY` entry cannot express.
+   * Replaces the step's static lead sentence. Step 2 needs it because its
+   * caption depends on whether the family already has a list, which a fixed
+   * `STEP_LEAD_KEY` entry cannot express. Pass `null` to show no lead line at
+   * all (step 1, MIGRATION.md §9b: that sentence moved into the "Why do we ask
+   * for this?" popover instead of sitting under the heading).
    */
-  lead?: React.ReactNode;
+  lead?: React.ReactNode | null;
   leadTestId?: string;
   children?: React.ReactNode;
 }) {
   const t = useTranslations();
   const heading = useStepHeadingFocus(slug);
+  const resolvedLead = lead === undefined ? t(STEP_LEAD_KEY[slug]) : lead;
 
   return (
     <section className="flex flex-col gap-6" data-testid={`step-${slug}`}>
@@ -51,12 +54,14 @@ export function StepPage({
         >
           {t(STEP_TITLE_KEY[slug])}
         </h1>
-        <p
-          className="text-sm text-pretty text-muted-foreground"
-          data-testid={leadTestId}
-        >
-          {lead ?? t(STEP_LEAD_KEY[slug])}
-        </p>
+        {resolvedLead === null ? null : (
+          <p
+            className="text-sm text-pretty text-muted-foreground"
+            data-testid={leadTestId}
+          >
+            {resolvedLead}
+          </p>
+        )}
       </header>
       {children}
     </section>

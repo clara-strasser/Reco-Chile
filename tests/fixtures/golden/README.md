@@ -1,9 +1,10 @@
 # Golden fixtures — the frozen numerical baseline
 
 These JSON files are **committed artifacts**, not build output. They record what
-the pre-migration Streamlit engine (`main` at commit `0a52f56`) computes for a
-fixed set of scenarios, so every later phase of the Next.js migration can be
-proven to compute exactly the same numbers (MIGRATION.md §6).
+the pre-migration Streamlit engine (`main` at commit `0a52f56`) computed for a
+fixed set of scenarios. The migration was proven against them, and they stay the
+numerical contract of the engine: any change to `sae_app/` that moves a number
+shows up here first (`docs/MIGRATION.md` §6).
 
 `tests/test_engine_golden.py` replays each file through the engine and compares:
 
@@ -41,7 +42,7 @@ baseline untouched, when:
    `HARD_UNMATCHED_THRESHOLD`; or `equiv_03` stops being the *same outcome,
    shifted probability* case (one outcome, chance range at least
    `EQUIV_PROBABILITY_CHANGE_WARNING_THRESHOLD`) — between them and `equiv_02`
-   the three verdicts of MIGRATION.md §3 are all frozen;
+   the three verdicts of `docs/MIGRATION.md` §3 are all frozen;
 3. the `address`- and `city`-precision recommendation runs return the same
    programs — that would mean the hard distance filter excluded nothing and the
    precision branch is untested.
@@ -72,14 +73,14 @@ touches the network.
 The generator is deterministic: on unchanged data and unchanged library versions
 it rewrites byte-identical files (`git status` stays clean).
 
-**A regeneration that changes any number invalidates the parity baseline.** If
-these files change, the migration can no longer prove that the ported engine
-matches the prototype — so a change here is a decision, not a chore:
+**A regeneration that changes any number changes what the product tells a
+family.** These files are the only place such a change is visible, so a change
+here is a decision, not a chore:
 
 1. Establish *why* the numbers moved (a data refresh, a pandas/scipy upgrade, or
    a genuine engine change) and confirm it is intended.
-2. Record it in **MIGRATION.md §9 (Phase log)**: the date, the cause, which
-   fixtures changed, and who accepted the new baseline.
-3. Commit the regenerated fixtures together with that note in the same commit.
+2. Commit the regenerated fixtures on their own, with a commit message that
+   states the date, the cause, which fixtures changed, and who accepted the new
+   baseline. Never bundle a regeneration with unrelated work.
 
 Never edit a fixture by hand to make a test pass.

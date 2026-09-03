@@ -11,6 +11,7 @@ import {
 } from "@/lib/store/wizard";
 
 import {
+  DISCLAIMER_PATH,
   FINISH_SLUG,
   isFinishPathname,
   STEP_SLUGS,
@@ -66,7 +67,11 @@ export function useWizardGating(): WizardGating {
     maxWishes: meta?.max_wishes ?? null,
   };
 
-  // Step 1 needs the welcome answer since §9b, so all four need a subscription.
+  // Step 1 needs the welcome answer and the consent checkbox since §9b, so all
+  // four need a subscription — plus the two raw flags, to tell which of the
+  // two front-door screens is the right redirect target when neither step is
+  // reachable yet.
+  const listExists = useWizardStore((state) => state.listExists);
   const canEnterStudent = useWizardStore(selectCanEnterStep(1, options));
   const canEnterList = useWizardStore(selectCanEnterStep(2, options));
   const canEnterResult = useWizardStore(selectCanEnterStep(3, options));
@@ -90,8 +95,16 @@ export function useWizardGating(): WizardGating {
     if (!entry[candidate]) break;
     fallbackSlug = candidate;
   }
+  // Not even step 1: either the welcome question is unanswered (→ the welcome
+  // page) or it is answered but the consent checkbox is not (→ the disclaimer
+  // page). `canEnterStep(1)` conflates both into `false`, so the raw
+  // `listExists` flag is what tells them apart here.
   const fallbackHref =
-    fallbackSlug === null ? WELCOME_PATH : stepPath(fallbackSlug);
+    fallbackSlug !== null
+      ? stepPath(fallbackSlug)
+      : listExists === null
+        ? WELCOME_PATH
+        : DISCLAIMER_PATH;
 
   if (finish) {
     return {

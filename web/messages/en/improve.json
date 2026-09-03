@@ -1,5 +1,5 @@
 {
-  "title": "4. Improve the preference list",
+  "title": "Improve your list",
   "heading": "4. Recommended similar programs",
   "subtitle": "Suggested programs",
   "findMore": "Find acceptable additional programs",
@@ -19,7 +19,7 @@
     "sectionTitle": "Improve distance estimates — optional",
     "heading": "Home address for distance calculation",
     "label": "Your home address",
-    "help": "Optional. Used only to compute distance/proximity to recommended programs. If left empty, proximity is estimated from the current wish list. The address is geocoded with OpenStreetMap/Nominatim when you click the button.",
+    "help": "Optional. Without it, distance is measured from your current list.",
     "hint": "Enter an address, then click the button to compute recommendation distances from home instead of the current wish-list centroid.",
     "intro": "Enter a home address to measure distance from home. Otherwise, distance is estimated from the current preference list.",
     "use": "Use this address for distance",
@@ -52,7 +52,8 @@
     "regionApproximation": "region approximation"
   },
   "count": {
-    "label": "Number of recommendations"
+    "label": "Number of recommendations",
+    "question": "How many recommendations do you want?"
   },
   "displaySettings": "Recommendation display settings",
   "card": {
@@ -71,7 +72,9 @@
     "assumption": "This estimate assumes the program is appended at the end and no special priority is declared.",
     "riskLegend": "Row colors reflect the projected unmatched risk after appending the program: green below the soft threshold ({soft}), orange between the soft and hard thresholds, and red at or above the hard threshold ({hard}).",
     "flaggedAtRisk": "Flagged at risk",
-    "noInformation": "No information"
+    "noInformation": "No information",
+    "chanceAppended": "Chance of getting in as your preference #{rank}",
+    "chanceNote": "If you add this one to the end of your current list."
   },
   "criteria": {
     "criterion": "Criterion",

@@ -4,26 +4,24 @@
  * Step 3 — review the result (MIGRATION.md §4.1, Phase 4; reshaped by §9b).
  *
  * The step runs `/simulate` on entry whenever the stored result is stale, then
- * renders, top to bottom:
+ * renders exactly two things:
  *
- *   headline (chance of being assigned, most likely school, estimate caption)
- *   -> outcomes (top four + all of them) and the interpretation popover
- *   -> ties mode:   sensitivity verdict, per-order view, reference + technical
- *      strict mode: family table, chance popover, detailed calculation
+ *   the outcome box (most likely school, its location, which preference it is,
+ *     the estimated chance, and the historical-data caveat)
  *   -> the finish / improve choice
  *
- * Product feedback round 1 (§9b, items 5–6) put the two figures first and took
- * the attention-level alerts and their thresholds out entirely; everything the
- * prototype showed below them is still here, moved down or into a disclosure.
+ * Product feedback round 1 (§9b, items 5–6) had already removed the
+ * attention-level alerts and their thresholds. Round 2 removes everything that
+ * remained below the headline: the overall assignment figure and unmatched
+ * risk, the outcome list, the per-preference family table, the equivalence
+ * sensitivity block and the detailed calculation. The page now answers one
+ * question — where am I most likely to end up, and how likely is that.
  *
- * Which branch is shown follows the *mode the family chose*, exactly as
- * `app.py` does: it stores `mode: "equivalence"` whenever the ties toggle is
- * on, so `render_simulation_result` draws the equivalence block even for a
- * list whose groups happen to be all singletons ("All 1 compatible strict
- * order(s) lead to: X"). The API cannot say that on its own — it omits
- * `equivalence_sensitivity` when there is only one compatible order — so the
- * branch reads the store flag and `equivalenceView` fills the one-order case
- * in (see `lib/simulation/equivalence.ts`).
+ * Note that the branch on `useEquivalenceClasses` is gone with it: the box is
+ * the same in both modes, so the store flag no longer changes what step 3
+ * draws. `ResultSummary`, `FamilyChanceTable`, `EquivalenceBlock`,
+ * `DetailTable`, `PagedRows`, `ProgramLine` and `tied-order.ts` are unrendered
+ * as of this change and kept only so the decision can be reversed cheaply.
  */
 
 import { RotateCcwIcon, TriangleAlertIcon } from "lucide-react";
@@ -33,43 +31,31 @@ import { StepPage } from "@/components/wizard/step-page";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { equivalenceView, useSimulation } from "@/lib/simulation";
+import { useSimulation } from "@/lib/simulation";
 import type { SimulationError } from "@/lib/simulation/use-simulation";
 import { useWizardStore } from "@/lib/store/wizard";
 
-import { EquivalenceBlock } from "./equivalence-block";
-import { FamilyChanceTable } from "./family-chance-table";
+import { OutcomeBox } from "./outcome-box";
 import { ResultActions } from "./result-actions";
-import { ResultHeadline } from "./result-headline";
-import { ResultSummary } from "./result-summary";
 
 export function ResultStep() {
   const { simulation, loading, error, retry } = useSimulation();
 
   const hasStudentId = useWizardStore((state) => state.studentId.trim() !== "");
   const hasWishes = useWizardStore((state) => state.wishes.length > 0);
-  const useEquivalenceClasses = useWizardStore(
-    (state) => state.useEquivalenceClasses,
-  );
 
   return (
-    <StepPage slug="result">
+    // No lead sentence: "the model uses historical 2024 calibration data…"
+    // said the same thing as the box's own caveat, one line above it. The
+    // caveat now lives in the box, where the number it qualifies is.
+    <StepPage slug="result" lead={null}>
       {error ? (
         <SimulationErrorAlert error={error} onRetry={retry} />
       ) : loading ? (
         <ResultSkeleton />
       ) : simulation ? (
         <div className="flex flex-col gap-8">
-          <ResultHeadline simulation={simulation} />
-          <ResultSummary simulation={simulation} />
-          {useEquivalenceClasses ? (
-            <EquivalenceBlock
-              simulation={simulation}
-              sensitivity={equivalenceView(simulation)}
-            />
-          ) : (
-            <FamilyChanceTable simulation={simulation} />
-          )}
+          <OutcomeBox simulation={simulation} />
           <ResultActions />
         </div>
       ) : (
@@ -90,15 +76,9 @@ function ResultSkeleton() {
       <span className="sr-only" role="status">
         {t("running")}
       </span>
-      <Skeleton className="h-6 w-1/2" />
-      <Skeleton className="h-24 w-full" />
-      <Skeleton className="h-12 w-full" />
-      <div className="flex flex-col gap-2">
-        <Skeleton className="h-4 w-3/4" />
-        <Skeleton className="h-4 w-2/3" />
-        <Skeleton className="h-4 w-1/2" />
-      </div>
-      <Skeleton className="h-40 w-full" />
+      <Skeleton className="h-48 w-full" />
+      <Skeleton className="h-6 w-1/3" />
+      <Skeleton className="h-28 w-full" />
     </div>
   );
 }

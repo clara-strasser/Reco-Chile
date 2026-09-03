@@ -1,28 +1,13 @@
 {
-  "title": "1. Tus datos",
-  "lead": "Necesitamos tu RUN o IPE para reproducir el sorteo de desempate y calcular tus posibilidades.",
-  "disclaimer": "Esta es una herramienta de investigación que te ayuda a decidir: no reemplaza ni envía tu postulación oficial al SAE.",
+  "title": "Tus datos",
+  "lead": "Necesitamos tu RUN o IPE para calcular tus posibilidades.",
   "idLabel": "Tu RUN o IPE",
   "idPlaceholder": "12.345.678-5 / 111222333-4",
-  "idHelp": "Ingresa el RUN o el IPE con su dígito verificador final. Los puntos y el guion son opcionales.",
   "idValid": "Formato de {kind} válido.",
-  "idRequiredHint": "Ingresa tu RUN/IPE para habilitar el análisis.",
   "privacyNote": "El cálculo se realiza en el servidor de esta aplicación. Tu RUN/IPE no queda guardado en el navegador ni aparece en la dirección web.",
   "why": {
     "title": "¿Por qué te pedimos este dato?",
-    "body": "Con este número reproducimos el sorteo oficial de desempate de cada establecimiento, que es lo que define tu lugar entre quienes postulan.",
+    "body": "Necesitamos tu RUN o IPE para calcular tus posibilidades.",
     "privacy": "El número no sale de esta herramienta: no se envía a ninguna parte y no modifica tu postulación oficial."
-  },
-  "listChoice": {
-    "note": "Tu respuesta: {answer}",
-    "change": "Cambiar respuesta"
-  },
-  "situationTitle": "Tu situación actual",
-  "ties": {
-    "label": "Todavía no he decidido el orden exacto entre algunos programas",
-    "help": "Usa esta opción de planificación para comparar órdenes posibles. Antes de enviar la postulación oficial tendrás que elegir el orden que realmente prefieres.",
-    "info": "Asigna el mismo número de grupo a los programas que hoy consideras equivalentes. La app comparará todos los órdenes compatibles, pero esta agrupación exploratoria no se envía al SAE.",
-    "strictLabel": "Orden estricto",
-    "equivalenceLabel": "Clases de equivalencia"
   }
 }

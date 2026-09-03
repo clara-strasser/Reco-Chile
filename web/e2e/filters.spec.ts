@@ -125,6 +125,9 @@ async function findSameNamePair(
 async function openBuilder(page: Page) {
   await page.goto("/es");
   await page.getByTestId("welcome-no").click();
+  await page.waitForURL("**/es/disclaimer");
+  await page.getByTestId("disclaimer-checkbox").click();
+  await page.getByTestId("disclaimer-continue").click();
   await page.waitForURL("**/es/student");
   await page.getByLabel(es.student.idLabel).fill(VALID_RUN);
   await page.getByTestId("wizard-continue").click();

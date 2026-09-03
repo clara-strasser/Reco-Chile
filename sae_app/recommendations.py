@@ -53,9 +53,8 @@ LOGGER = logging.getLogger(__name__)
 
 # Placeholder emitted in the "School" column when a program carries no school
 # name. It is a *code*, not user-facing copy: this module must stay
-# Streamlit-free and language-free (MIGRATION.md Phase 1), so the value is
-# the English i18n key and the presentation layer translates it
-# (sae_app.ui_recommendations for the prototype, api.py for the HTTP API).
+# language-free (MIGRATION.md Phase 1), so the value is the English i18n key
+# and the presentation layer translates it (`web/`, through `enums.*`).
 SCHOOL_NAME_UNAVAILABLE = "School name unavailable"
 
 RECOMMENDATION_CRITERIA = [
@@ -394,18 +393,6 @@ def candidate_risk_cache_key(
         round(as_float(candidate_program.get(f"priority_share_{NO_PRIORITY}_2024", 0), 0.0), 8),
         round(as_float(candidate_program.get(f"cum_share_before_{NO_PRIORITY}_2024", 0), 0.0), 8),
     )
-
-
-def clear_candidate_risk_cache() -> None:
-    """Deprecated no-op kept only for the Streamlit prototype (``app.py``).
-
-    Candidate metrics no longer live in ``st.session_state``: every call to
-    ``recommend_similar_programs`` without an explicit ``candidate_cache``
-    builds a fresh :class:`CandidateRiskCache`, so the Streamlit UI already gets
-    an empty cache on every rerun and has nothing to clear. Deleted together
-    with ``app.py`` in migration phase 7.
-    """
-    return None
 
 
 def cached_candidate_base_metrics(

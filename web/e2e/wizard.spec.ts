@@ -57,8 +57,10 @@ function stepHeading(locale: Locale, key: string) {
 }
 
 /**
- * Through the front door and into step 1 — the only way in since §9b.
- * `answer: "yes"` is "I already have my list", `"no"` asks for help building it.
+ * Through the front door and into step 1 — the only way in since §9b. The
+ * front door is two screens: the welcome question (`answer: "yes"` is "I
+ * already have my list", `"no"` asks for help building it) and then the
+ * "Before we continue" consent checkbox.
  */
 async function enterWizard(
   page: Page,
@@ -66,6 +68,9 @@ async function enterWizard(
 ) {
   await page.goto(`/${locale}`);
   await page.getByTestId(`welcome-${answer}`).click();
+  await page.waitForURL(`**/${locale}/disclaimer`);
+  await page.getByTestId("disclaimer-checkbox").click();
+  await page.getByTestId("disclaimer-continue").click();
   await page.waitForURL(`**/${locale}/student`);
 }
 
@@ -84,7 +89,7 @@ test.describe("welcome page", () => {
       }),
     ).toBeVisible();
     await expect(page.getByTestId("welcome")).toContainText(
-      copy("es", "app.welcome.subline"),
+      copy("es", "app.welcome.question"),
     );
     await expect(page.getByTestId("welcome-yes")).toHaveText(
       copy("es", "app.welcome.yes"),
@@ -105,18 +110,29 @@ test.describe("welcome page", () => {
     await expect(
       page.getByRole("heading", stepHeading("es", "student.title")),
     ).toBeVisible();
-    await expect(page.getByTestId("list-choice-note")).toContainText(
-      copy("es", "app.welcome.no"),
+    // "Remembered" means it survived into `sessionStorage` (§4.2) — step 1
+    // itself carries no visible echo of the answer any more.
+    const stored = await page.evaluate(() =>
+      window.sessionStorage.getItem("reco-chile.wizard"),
     );
+    expect(stored).toContain('"listExists":false');
 
-    // The other answer, from the same front door.
-    await page.getByTestId("list-choice-change").click();
+    // The other answer, from the same front door — reached via the header's
+    // brand link, the only way back to the welcome page from step 1 now. The
+    // consent checkbox was already ticked on the way in, so the disclaimer
+    // page here needs no re-ticking — it is a direct view of the flag that
+    // recorded it.
+    await page.getByRole("link", { name: copy("es", "app.title") }).click();
     await page.waitForURL("**/es");
     await page.getByTestId("welcome-yes").click();
+    await page.waitForURL("**/es/disclaimer");
+    await expect(page.getByTestId("disclaimer-checkbox")).toBeChecked();
+    await page.getByTestId("disclaimer-continue").click();
     await page.waitForURL("**/es/student");
-    await expect(page.getByTestId("list-choice-note")).toContainText(
-      copy("es", "app.welcome.yes"),
+    const storedAfter = await page.evaluate(() =>
+      window.sessionStorage.getItem("reco-chile.wizard"),
     );
+    expect(storedAfter).toContain('"listExists":true');
   });
 
   test("loads in English too", async ({ page }) => {
@@ -225,9 +241,6 @@ test.describe("wizard shell", () => {
     await page.goto("/es/student");
     await page.waitForLoadState("networkidle");
     await expect(page).toHaveURL(/\/es\/student$/);
-    await expect(page.getByTestId("list-choice-note")).toContainText(
-      copy("es", "app.welcome.no"),
-    );
 
     await page.reload();
     await expect(page).toHaveURL(/\/es\/student$/);
@@ -239,7 +252,7 @@ test.describe("wizard shell", () => {
     const continueButton = page.getByTestId("wizard-continue");
     const feedback = page.getByTestId("student-id-feedback");
     await expect(continueButton).toBeDisabled();
-    await expect(feedback).toHaveAttribute("data-state", "empty");
+    await expect(feedback).toHaveCount(0);
 
     const input = page.getByLabel(copy("es", "student.idLabel"));
 

@@ -65,6 +65,7 @@ const PERSIST_VERSION = 1;
 async function seedList(page: Page): Promise<void> {
   const state = {
     listExists: true,
+    disclaimerAcknowledged: true,
     useEquivalenceClasses: false,
     wishes: LIST.inputs.wishes.map((wish) => ({
       programId: wish.program_id,
@@ -155,7 +156,7 @@ async function openImprove(page: Page): Promise<void> {
     .click();
   await page.waitForURL("**/es/result");
   // The simulation has to succeed before step 4 unlocks (§4.1).
-  await expect(page.getByTestId("unmatched-risk")).toBeVisible({
+  await expect(page.getByTestId("result-outcome")).toBeVisible({
     timeout: 60_000,
   });
 

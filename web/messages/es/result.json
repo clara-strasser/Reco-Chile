@@ -1,8 +1,13 @@
 {
-  "title": "3. Revisar el resultado",
+  "title": "Revisa tus resultados",
   "summaryTitle": "Resumen",
   "heading": "Resultado de la lista de preferencias",
   "locationUnknown": "Comuna y región sin información",
+  "outcome": {
+    "title": "Lo más probable es que quedes en:",
+    "chance": "Probabilidad estimada: {chance}",
+    "disclaimer": "Estimación basada en datos históricos - no es una garantía oficial del SAE."
+  },
   "headline": {
     "chanceTitle": "Probabilidad estimada de quedar con un cupo asignado",
     "chanceNote": "Considera todos los programas de tu lista.",
@@ -16,7 +21,7 @@
   "next": {
     "title": "¿Qué quieres hacer ahora?",
     "finish": "Estoy conforme — terminar",
-    "finishHint": "Cierras aquí con un resumen de tu lista y de este resultado.",
+    "finishHint": "Vuelves al inicio. No se guarda ni se envía nada.",
     "improve": "No estoy conforme — ayúdame a mejorar mi lista",
     "improveHint": "Te sugerimos establecimientos adicionales para agregar al final de tu lista."
   },

@@ -68,7 +68,7 @@
   "search": {
     "title": "Search and add programs",
     "label": "Search for a program",
-    "help": "Start typing the school name, commune, or program details.",
+    "help": "Search by school name, commune, or program.",
     "placeholder": "Select a program",
     "inputPlaceholder": "School, commune, or program details",
     "add": "Add",

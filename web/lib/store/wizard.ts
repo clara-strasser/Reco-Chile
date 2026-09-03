@@ -50,7 +50,7 @@ export type {
 export { PRIORITY_FLAGS } from "./types";
 
 /** Prototype default of the "number of recommendations" slider (2–10). */
-export const DEFAULT_RECOMMENDATION_COUNT = 5;
+export const DEFAULT_RECOMMENDATION_COUNT = 3;
 export const MIN_RECOMMENDATION_COUNT = 2;
 export const MAX_RECOMMENDATION_COUNT = 10;
 
@@ -67,6 +67,10 @@ export type WizardState = {
   studentId: string;
   /** The welcome page's answer; `null` = not asked yet, which locks step 1. */
   listExists: boolean | null;
+  /** The "Before we continue" consent checkbox, shown after the welcome
+   *  answer and before step 1. `false` locks step 1 the same way an
+   *  unanswered `listExists` does. */
+  disclaimerAcknowledged: boolean;
   useEquivalenceClasses: boolean;
   filters: ProgramFilters;
   wishes: Wish[];
@@ -133,6 +137,7 @@ export type WizardState = {
 export type WizardActions = {
   setStudentId: (studentId: string) => void;
   setListExists: (listExists: boolean | null) => void;
+  setDisclaimerAcknowledged: (acknowledged: boolean) => void;
   setUseEquivalenceClasses: (useEquivalenceClasses: boolean) => void;
   setFilters: (
     filters:
@@ -167,7 +172,11 @@ export type WizardStore = WizardState & WizardActions;
 /** The four persisted slices — everything else is memory-only. */
 export type PersistedWizardState = Pick<
   WizardState,
-  "wishes" | "listExists" | "useEquivalenceClasses" | "filters"
+  | "wishes"
+  | "listExists"
+  | "disclaimerAcknowledged"
+  | "useEquivalenceClasses"
+  | "filters"
 >;
 
 // ---------------------------------------------------------------------------
@@ -332,6 +341,7 @@ export function initialWizardState(): WizardState {
   return {
     studentId: "",
     listExists: null,
+    disclaimerAcknowledged: false,
     useEquivalenceClasses: false,
     filters: emptyFilters(),
     wishes: [],
@@ -378,6 +388,10 @@ export const useWizardStore = create<WizardStore>()(
         // list itself and the simulation survive a change of mind. `null` puts
         // the family back in front of the welcome question (`canEnterStep(1)`).
         set({ listExists });
+      },
+
+      setDisclaimerAcknowledged: (disclaimerAcknowledged) => {
+        set({ disclaimerAcknowledged });
       },
 
       setUseEquivalenceClasses: (useEquivalenceClasses) => {
@@ -583,6 +597,7 @@ export const useWizardStore = create<WizardStore>()(
       partialize: (state): PersistedWizardState => ({
         wishes: state.wishes,
         listExists: state.listExists,
+        disclaimerAcknowledged: state.disclaimerAcknowledged,
         useEquivalenceClasses: state.useEquivalenceClasses,
         filters: state.filters,
       }),
@@ -646,6 +661,19 @@ export function hasListChoice(state: Pick<WizardState, "listExists">): boolean {
 }
 
 /**
+ * Has the "Before we continue" consent checkbox been checked? Shown right
+ * after the welcome answer and before step 1 — like `listExists`, this is an
+ * *entry* condition for step 1, not a step 1 field, so a deep link past it
+ * (with the welcome answer given but the checkbox unmarked) sends the family
+ * to the consent page instead of into the step.
+ */
+export function hasAcknowledgedDisclaimer(
+  state: Pick<WizardState, "disclaimerAcknowledged">,
+): boolean {
+  return state.disclaimerAcknowledged;
+}
+
+/**
  * Step 2: at least one program, no more than `/meta.max_wishes` of them, and —
  * in ties mode — an order count within the server's exact-evaluation limit.
  *
@@ -701,10 +729,10 @@ export function canEnterStep(
 ): boolean {
   switch (step) {
     case 1:
-      // The welcome choice, not "always" (§9b item 2): step 1 no longer asks
-      // the question, so entering it without an answer would strand the family
-      // in a wizard branch nobody chose.
-      return hasListChoice(state);
+      // The welcome choice and the consent checkbox, not "always" (§9b item
+      // 2): step 1 no longer asks the question, so entering it without an
+      // answer would strand the family in a wizard branch nobody chose.
+      return hasListChoice(state) && hasAcknowledgedDisclaimer(state);
     case 2:
       return canEnterStep(state, 1, options) && canContinue(state, 1, options);
     case 3:

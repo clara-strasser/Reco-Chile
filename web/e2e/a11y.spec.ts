@@ -98,6 +98,7 @@ async function seedList(
 ): Promise<void> {
   const state = {
     listExists: true,
+    disclaimerAcknowledged: true,
     useEquivalenceClasses: ties,
     wishes: fixture.inputs.wishes.map((wish) => ({
       programId: wish.program_id,
@@ -135,7 +136,12 @@ async function seedListChoice(page: Page, listExists = true): Promise<void> {
     [
       PERSIST_KEY,
       JSON.stringify({
-        state: { listExists, useEquivalenceClasses: false, wishes: [] },
+        state: {
+          listExists,
+          disclaimerAcknowledged: true,
+          useEquivalenceClasses: false,
+          wishes: [],
+        },
         version: PERSIST_VERSION,
       }),
     ] as const,
@@ -287,12 +293,29 @@ for (const locale of LOCALES) {
       await scan(page, info, `welcome (${locale})`);
     });
 
+    test("the disclaimer page", async ({ page }, info) => {
+      // Screen 2 of the front door, reached from either welcome answer.
+      await page.goto(`/${locale}`);
+      await page.getByTestId("welcome-no").click();
+      await page.waitForURL(`**/${locale}/disclaimer`);
+      await expect(
+        page.getByRole("heading", {
+          level: 1,
+          name: MESSAGES[locale].app.disclaimer.headline,
+        }),
+      ).toBeVisible();
+      await scan(page, info, `disclaimer (${locale})`);
+    });
+
     test("step 1, empty and filled", async ({ page }, info) => {
       // Through the front door: the welcome answer is what unlocks step 1, and
       // "No — help me build it" is the branch that also opens step 2's filter
       // panel later on.
       await page.goto(`/${locale}`);
       await page.getByTestId("welcome-no").click();
+      await page.waitForURL(`**/${locale}/disclaimer`);
+      await page.getByTestId("disclaimer-checkbox").click();
+      await page.getByTestId("disclaimer-continue").click();
       await page.waitForURL(`**/${locale}/student`);
       await expect(
         page.getByRole("heading", {
@@ -302,13 +325,13 @@ for (const locale of LOCALES) {
       ).toBeVisible();
       await scan(page, info, `step 1 (${locale}) — empty`);
 
-      // Filled: the identifier feedback, the answer note and the ties switch
-      // all carry state now, and the ties callout is rendered.
+      // Filled: the identifier feedback carries state now. The ties switch and
+      // the welcome-answer note both moved off this step (§9b) — the ties
+      // switch is scanned on step 2 instead, via the seeded "strict list" /
+      // "two tied groups" fixtures below.
       await page
         .getByLabel(MESSAGES[locale].student.idLabel)
         .fill(STRICT_SMALL.inputs.student_id);
-      await expect(page.getByTestId("list-choice-note")).toBeVisible();
-      await page.getByTestId("equivalence-switch").click();
       await expect(page.getByTestId("student-id-feedback")).toHaveAttribute(
         "data-state",
         "valid",
@@ -355,8 +378,6 @@ for (const locale of LOCALES) {
       await expect(page.getByTestId("wish-group")).toHaveCount(
         TIED_GROUPS.inputs.wishes.length,
       );
-      // Two groups of three: the order count is part of this state.
-      await expect(page.getByTestId("order-count")).toBeVisible();
       await scan(page, info, `step 2 (${locale}) — ties`);
     });
 
@@ -365,36 +386,12 @@ for (const locale of LOCALES) {
       await identify(page, locale, STRICT_RESULT.inputs.student_id);
       await goToStep(page, locale, 3, "result");
 
-      await expect(page.getByTestId("unmatched-risk")).toBeVisible({
+      await expect(page.getByTestId("result-outcome")).toBeVisible({
         timeout: 60_000,
       });
-      await scan(page, info, `step 3 (${locale}) — strict, collapsed`);
-
-      // Every disclosure open: the "show all outcomes" list, the attention
-      // definition, the family table's popover and the detailed calculation.
-      await openEveryDisclosure(page);
-      await expect(page.getByTestId("detail-table")).toBeVisible();
-      await scan(page, info, `step 3 (${locale}) — strict, expanded`);
-    });
-
-    test("the finish page", async ({ page }, info) => {
-      // The end of the flow (§9b item 6) is a page in its own right — a
-      // heading, a figure, a read-only list, an alert and two exits — and it is
-      // drawn without the stepper and without the Back/Continue bar, so its
-      // landmark and heading structure is not the one every step shares.
-      await seedList(page, STRICT_SMALL, false);
-      await identify(page, locale, STRICT_SMALL.inputs.student_id);
-      await goToStep(page, locale, 3, "result");
-      await expect(page.getByTestId("unmatched-risk")).toBeVisible({
-        timeout: 60_000,
-      });
-
-      await page.getByTestId("result-finish").click();
-      await page.waitForURL(`**/${locale}/finish`);
-      await expect(page.getByTestId("finish-wish")).toHaveCount(
-        STRICT_SMALL.inputs.wishes.length,
-      );
-      await scan(page, info, `finish (${locale})`);
+      // Feedback round 2 left step 3 with one box and the finish/improve
+      // choice: there is no disclosure to open, so this is the whole step.
+      await scan(page, info, `step 3 (${locale}) — strict`);
     });
 
     test("step 3, an equivalence result", async ({ page }, info) => {
@@ -402,14 +399,14 @@ for (const locale of LOCALES) {
       await identify(page, locale, EQUIV_RESULT.inputs.student_id);
       await goToStep(page, locale, 3, "result");
 
-      await expect(page.getByTestId("equivalence-verdict")).toBeVisible({
+      // Since feedback round 2 the mode no longer changes what step 3 draws —
+      // the box is the same — but the /simulate call behind it is not, so the
+      // ties path still gets its own scan.
+      await expect(page.getByTestId("result-outcome")).toBeVisible({
         timeout: 60_000,
       });
-      await scan(page, info, `step 3 (${locale}) — ties, collapsed`);
-
-      await openEveryDisclosure(page);
-      await expect(page.getByTestId("technical-variants-table")).toBeVisible();
-      await scan(page, info, `step 3 (${locale}) — ties, expanded`);
+      await expect(page.getByTestId("equivalence-verdict")).toHaveCount(0);
+      await scan(page, info, `step 3 (${locale}) — ties`);
     });
 
     test("step 4, recommendations and a geocoded home", async ({
@@ -421,7 +418,7 @@ for (const locale of LOCALES) {
       await seedList(page, RECOMMEND, false);
       await identify(page, locale, RECOMMEND.inputs.student_id);
       await goToStep(page, locale, 3, "result");
-      await expect(page.getByTestId("unmatched-risk")).toBeVisible({
+      await expect(page.getByTestId("result-outcome")).toBeVisible({
         timeout: 60_000,
       });
       // §9b item 6: the result step's own choice replaced the generic Continue.
@@ -538,7 +535,7 @@ test.describe("focus management", () => {
     await seedList(page, RECOMMEND, false);
     await identify(page, "es", RECOMMEND.inputs.student_id);
     await goToStep(page, "es", 3, "result");
-    await expect(page.getByTestId("unmatched-risk")).toBeVisible({
+    await expect(page.getByTestId("result-outcome")).toBeVisible({
       timeout: 60_000,
     });
     await page.getByTestId("result-improve").click();

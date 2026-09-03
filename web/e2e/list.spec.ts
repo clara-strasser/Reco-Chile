@@ -123,6 +123,9 @@ async function openListStep(
 ) {
   await page.goto(`/${locale}`);
   await page.getByTestId(`welcome-${branch}`).click();
+  await page.waitForURL(`**/${locale}/disclaimer`);
+  await page.getByTestId("disclaimer-checkbox").click();
+  await page.getByTestId("disclaimer-continue").click();
   await page.waitForURL(`**/${locale}/student`);
   await page.getByLabel(copy(locale, "student.idLabel")).fill(VALID_RUN);
   await page.getByTestId("wizard-continue").click();
@@ -154,18 +157,14 @@ async function listedIds(page: Page): Promise<string[]> {
     );
 }
 
-/** Flip the equivalence-class switch on step 1 and come back to the list. */
+/** Flip the equivalence-class switch, which lives on this step (§9b). */
 async function setTiesMode(page: Page, on: boolean, locale: Locale = "es") {
-  await page.getByTestId("wizard-back").click();
-  await page.waitForURL(`**/${locale}/student`);
   const toggle = page.getByRole("switch", {
-    name: copy(locale, "student.ties.label"),
+    name: copy(locale, "list.ties.label"),
   });
   await expect(toggle).toHaveAttribute("aria-checked", String(!on));
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-checked", String(on));
-  await page.getByTestId("wizard-continue").click();
-  await page.waitForURL(`**/${locale}/list`);
 }
 
 test.describe("step 2 — build and order the list", () => {
@@ -386,6 +385,44 @@ test.describe("step 2 — build and order the list", () => {
     ]);
   });
 
+  // The mode badge that used to name "Orden estricto" / "Clases de
+  // equivalencia" is gone (feedback round 2): the switch's own state is the
+  // readout, so that is what this asserts.
+  test("the ties switch reflects its state", async ({ page }) => {
+    await openListStep(page);
+
+    const toggle = page.getByRole("switch", {
+      name: copy("es", "list.ties.label"),
+    });
+    await expect(toggle).toHaveAttribute("aria-checked", "false");
+
+    await toggle.click();
+
+    await expect(toggle).toHaveAttribute("aria-checked", "true");
+  });
+
+  test("the ties switch is operable from the keyboard, and its explanation is behind a popover", async ({
+    page,
+  }) => {
+    await openListStep(page);
+
+    const toggle = page.getByRole("switch", {
+      name: copy("es", "list.ties.label"),
+    });
+    await toggle.focus();
+    await page.keyboard.press("Space");
+
+    await expect(toggle).toHaveAttribute("aria-checked", "true");
+
+    // The planning caveat is not permanently visible — it opens on demand,
+    // the same pattern as step 1's "Why do we ask for this?".
+    await expect(page.getByTestId("equivalence-help-content")).toHaveCount(0);
+    await page.getByTestId("equivalence-help-trigger").click();
+    await expect(page.getByTestId("equivalence-help-content")).toHaveText(
+      copy("es", "list.ties.help"),
+    );
+  });
+
   test("ties mode counts the compatible orders and strict mode keeps the list", async ({
     page,
     request,
@@ -399,18 +436,14 @@ test.describe("step 2 — build and order the list", () => {
     // Groups start at the current positions: one class per program, one order.
     await expect(page.getByTestId("wish-group")).toHaveCount(3);
     await expect(page.getByTestId("wish-rank")).toHaveCount(0);
-    await expect(page.getByTestId("order-count")).toHaveText(
-      fill(copy("es", "list.notices.orderCount"), { n: "1" }),
-    );
+    // Well within the limit, so no over-cap warning either.
+    await expect(page.getByTestId("order-count-over-cap")).toHaveCount(0);
 
     // Tie the second program with the first: 2! × 1! = 2 compatible orders.
     const second = page.locator(
       `[data-testid="wish-card"][data-program-id="${programs[1].program_id}"]`,
     );
     await second.getByTestId("wish-group").fill("1");
-    await expect(page.getByTestId("order-count")).toHaveText(
-      fill(copy("es", "list.notices.orderCount"), { n: "2" }),
-    );
     await expect(page.getByTestId("wizard-continue")).toBeEnabled();
 
     await setTiesMode(page, false);
@@ -419,7 +452,6 @@ test.describe("step 2 — build and order the list", () => {
     await expect(page.getByTestId("wish-card")).toHaveCount(3);
     expect(await listedIds(page)).toEqual(programs.map((p) => p.program_id));
     await expect(page.getByTestId("wish-rank")).toHaveCount(3);
-    await expect(page.getByTestId("order-count")).toHaveCount(0);
   });
 
   test("keeps the wishes across a reload, but not the RUN", async ({
@@ -456,13 +488,18 @@ test.describe("step 2 — build and order the list", () => {
       copy("es", "filters.intro"),
     );
 
-    // "Yes — review my list", changed through the note step 1 carries: no
-    // filter panel, and the order reminder instead.
+    // "Yes — review my list", changed via the header's brand link back to the
+    // welcome page (step 1 no longer echoes the answer): no filter panel, and
+    // the order reminder instead.
     await page.getByTestId("wizard-back").click();
     await page.waitForURL("**/es/student");
-    await page.getByTestId("list-choice-change").click();
+    await page.getByRole("link", { name: copy("es", "app.title") }).click();
     await page.waitForURL("**/es");
     await page.getByTestId("welcome-yes").click();
+    // The consent checkbox was already ticked on the way in and is a direct
+    // view of that flag, so it comes back pre-checked here.
+    await page.waitForURL("**/es/disclaimer");
+    await page.getByTestId("disclaimer-continue").click();
     await page.waitForURL("**/es/student");
     await page.getByTestId("wizard-continue").click();
     await page.waitForURL("**/es/list");

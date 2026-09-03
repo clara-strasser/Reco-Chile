@@ -660,6 +660,12 @@ class RecommendationItem(BaseModel):
     program_display_name: str
     distance_km: float | None
     chance_if_considered: float
+    # The candidate's final assignment probability when appended at the end of
+    # the current list, i.e. at wish rank `appended_wish_rank`. See
+    # `_final_chance_if_appended`: it is the marginal unmatched-risk reduction
+    # the engine already computes, restated. On the wire so `web/` never
+    # combines two probabilities of its own (MIGRATION.md §0).
+    final_chance_if_appended: float | None
     projected_unmatched_risk: float | None
     risk_level: str
     capacity: float | None
@@ -675,6 +681,10 @@ class RecommendationDiagnostics(BaseModel):
 
 class RecommendationResponse(BaseModel):
     current_unmatched_risk: float
+    # The wish rank every `final_chance_if_appended` assumes: one past the end
+    # of the list that was sent. Returned rather than inferred so the caller
+    # does not have to restate the "appended last" rule.
+    appended_wish_rank: int
     distance_reference: str
     hard_distance_filter_applied: bool
     similarity_fallback_mode: bool
@@ -719,6 +729,29 @@ def _optional_float(value) -> float | None:
     except (TypeError, ValueError):
         return None
     return as_float if np.isfinite(as_float) else None
+
+
+def _final_chance_if_appended(current_unmatched_risk: float, projected) -> float | None:
+    """The candidate's own final assignment probability, appended last.
+
+    `sae_app.recommendations.candidate_portfolio_metrics` states the identity:
+    a candidate appended after the current list is reached only when every
+    current wish falls through, so
+
+        final_chance_if_appended = current_unmatched_risk * chance_if_considered
+                                 = current_unmatched_risk - projected_unmatched_risk
+
+    The engine keeps only the projected risk in the row, so the adapter restates
+    it from the second form rather than re-deriving the product — the value it
+    subtracts is the engine's own, already clipped to [0, 1]. Doing it here
+    keeps every probability the browser prints out of the browser's arithmetic
+    (MIGRATION.md §0) without adding a column to the recommendation frame, whose
+    exact key set the golden fixtures pin.
+    """
+    projected_value = _optional_float(projected)
+    if projected_value is None or not np.isfinite(current_unmatched_risk):
+        return None
+    return float(np.clip(current_unmatched_risk - projected_value, 0.0, 1.0))
 
 
 def _optional_int(value) -> int | None:
@@ -1259,6 +1292,9 @@ def recommend(
             # Raw columns only: the formatted "Chance if considered" etc. are
             # display strings and must never reach the wire.
             chance_if_considered=float(row.get("_chance_if_considered_raw", 0.0)),
+            final_chance_if_appended=_final_chance_if_appended(
+                current_unmatched_risk, row.get("_projected_unmatched_risk_raw")
+            ),
             projected_unmatched_risk=_optional_float(row.get("_projected_unmatched_risk_raw")),
             risk_level=str(row.get("_risk_color", "gray")).strip() or "gray",
             capacity=_optional_float(row.get("Capacity")),
@@ -1269,6 +1305,7 @@ def recommend(
 
     return RecommendationResponse(
         current_unmatched_risk=current_unmatched_risk,
+        appended_wish_rank=len(payload.wishes) + 1,
         distance_reference=distance_reference,
         hard_distance_filter_applied=bool(
             home_geo_reference is not None

@@ -1,5 +1,5 @@
 {
-  "title": "Calcula tus posibilidades de admisión SAE",
+  "title": "Calcula tus posibilidades de admisión",
   "tagline": "Ingresa tu lista de preferencias y estima tus posibilidades de obtener un cupo. Esta herramienta de investigación te ayuda a decidir; no reemplaza ni envía tu postulación oficial al SAE.",
   "simulationName": "Simulación de posibilidades de admisión SAE",
   "languageLabel": "Idioma",
@@ -10,11 +10,18 @@
   "yes": "Sí",
   "no": "No",
   "welcome": {
-    "headline": "Ingresa tu lista de preferencias y calcula tus posibilidades de admisión.",
-    "subline": "¿Aún no tienes tu lista? No te preocupes, te ayudamos a crearla.",
+    "headline": "Calcula tus posibilidades de admisión",
     "question": "¿Ya tienes tu lista de preferencias?",
-    "yes": "Sí — quiero revisar mi lista",
-    "no": "No — ayúdame a crearla"
+    "yes": "Sí",
+    "no": "No, ayúdame a armarla"
+  },
+  "disclaimer": {
+    "headline": "Antes de continuar, ten en cuenta dos cosas",
+    "item1Title": "Esta no es tu postulación oficial.",
+    "item1Body": "Igual debes postular por separado en el SAE — esta herramienta no lo hace por ti.",
+    "item2Title": "Son estimaciones, no garantías.",
+    "item2Body": "Calculamos tus posibilidades con datos de años anteriores, así que trata los resultados como una orientación general, no como un resultado seguro.",
+    "checkbox": "Entiendo y quiero continuar"
   },
   "finish": {
     "title": "¡Listo!",
@@ -29,9 +36,7 @@
     "startOver": "Empezar de nuevo"
   },
   "aboutEstimate": {
-    "title": "Acerca de esta estimación",
-    "body": "El modelo usa datos históricos de calibración 2024 y datos de cupos 2025. Los resultados son estimaciones, no garantías oficiales de admisión.",
-    "mtbMode": "Para la admisión 2026, el sorteo de desempate se reproduce a partir de tu RUN/IPE en cada establecimiento. Los resultados son estimaciones basadas en la calibración del año anterior; no son garantías oficiales de admisión."
+    "body": "El modelo usa datos históricos de calibración 2024 y datos de cupos 2025. Los resultados son estimaciones, no garantías oficiales de admisión."
   },
   "error": {
     "title": "No pudimos mostrar este paso",

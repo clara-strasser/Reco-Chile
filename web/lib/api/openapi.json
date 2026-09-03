@@ -602,6 +602,17 @@
             ],
             "title": "Estimated Mtb Rank"
           },
+          "final_chance_if_appended": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Final Chance If Appended"
+          },
           "program_display_name": {
             "title": "Program Display Name",
             "type": "string"
@@ -662,6 +673,7 @@
           "program_display_name",
           "distance_km",
           "chance_if_considered",
+          "final_chance_if_appended",
           "projected_unmatched_risk",
           "risk_level",
           "capacity",
@@ -715,6 +727,10 @@
       },
       "RecommendationResponse": {
         "properties": {
+          "appended_wish_rank": {
+            "title": "Appended Wish Rank",
+            "type": "integer"
+          },
           "current_unmatched_risk": {
             "title": "Current Unmatched Risk",
             "type": "number"
@@ -744,6 +760,7 @@
         },
         "required": [
           "current_unmatched_risk",
+          "appended_wish_rank",
           "distance_reference",
           "hard_distance_filter_applied",
           "similarity_fallback_mode",

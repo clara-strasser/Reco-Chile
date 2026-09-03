@@ -2,13 +2,12 @@
 
 Next.js (App Router) + shadcn/ui frontend for the SAE risk estimator. It
 formats and explains; it never computes a probability — every number comes from
-the FastAPI backend (`../api.py`) on top of the `sae_app/` engine. See
-`../MIGRATION.md` for the plan and the API contract, `../CLAUDE.md` for the
-conventions.
+the FastAPI backend (`../api.py`) on top of the `sae_app/` engine.
 
-Status: **Phase 3–5 in progress.** The wizard routes, i18n catalogues, zustand
-store, typed API client and `/api` proxy are in place; the four steps are being
-filled in. See `../MIGRATION.md` §9 for the phase log.
+See **`../CLAUDE.md`** for the conventions and the frontend style guide, and
+`../docs/MIGRATION.md` (legacy) for the API contract (§3), the wizard/state
+design (§4) and the history of how this app replaced the Streamlit prototype.
+Comments in this directory cite that document as `MIGRATION.md`, unqualified.
 
 ## Requirements
 
@@ -144,8 +143,8 @@ match `/api/*`.
 
 ## Theme
 
-`app/globals.css` carries the prototype's palette over from
-`../.streamlit/config.toml` (accent `#1F6FEB`, background `#FFFFFF`, secondary
+`app/globals.css` carries the palette over from the Streamlit prototype's
+`.streamlit/config.toml` (deleted with it; accent `#1F6FEB`, background `#FFFFFF`, secondary
 surface `#F6F7F9`, text `#16191D`, border `#E4E7EB`, radius `0.5rem`, 15px base
 text, system sans-serif). Light mode is the default and the only mode required
 for parity; dark tokens are defined under `.dark` but nothing toggles them yet.
@@ -206,10 +205,10 @@ the browser.
 `../.github/workflows/ci.yml` runs on every push to `main` / `migration/**` and
 on every pull request. Two of its three jobs are this directory:
 
-| Job   | Commands                                                                                                                                                                                  |
-| ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `web` | `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm format:check`, `pnpm exec tsc --noEmit`, `pnpm test --run`, `pnpm build`                                                             |
-| `e2e` | creates `../.venv` from `../requirements-api.txt` (the interpreter `playwright.config.ts` starts uvicorn with), `pnpm exec playwright install --with-deps chromium`, then `CI=1 pnpm e2e` |
+| Job   | Commands                                                                                                                                                                              |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `web` | `pnpm install --frozen-lockfile`, `pnpm lint`, `pnpm format:check`, `pnpm exec tsc --noEmit`, `pnpm test --run`, `pnpm build`                                                         |
+| `e2e` | creates `../.venv` from `../requirements.txt` (the interpreter `playwright.config.ts` starts uvicorn with), `pnpm exec playwright install --with-deps chromium`, then `CI=1 pnpm e2e` |
 
 Node is the LTS major (22) there, while `.nvmrc` names the version used locally;
 `package.json` requires `>=20` and pnpm comes from its `packageManager` field,

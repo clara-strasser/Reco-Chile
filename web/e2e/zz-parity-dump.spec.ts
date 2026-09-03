@@ -161,6 +161,7 @@ const PERSIST_VERSION = 1;
 async function seed(page: Page, s: Scenario) {
   const state = {
     listExists: true,
+    disclaimerAcknowledged: true,
     useEquivalenceClasses: s.ties,
     wishes: s.wishes.map((w) => ({
       programId: w.program_id,
@@ -185,7 +186,12 @@ async function seedChoice(page: Page) {
     [
       PERSIST_KEY,
       JSON.stringify({
-        state: { listExists: true, useEquivalenceClasses: false, wishes: [] },
+        state: {
+          listExists: true,
+          disclaimerAcknowledged: true,
+          useEquivalenceClasses: false,
+          wishes: [],
+        },
         version: PERSIST_VERSION,
       }),
     ] as const,
@@ -319,7 +325,7 @@ for (const s of SCENARIOS) {
     await resultLink.click();
     await page.waitForURL("**/es/result");
     await expect(
-      page.getByTestId("unmatched-risk").or(page.getByTestId("result-error")),
+      page.getByTestId("result-outcome").or(page.getByTestId("result-error")),
     ).toBeVisible({ timeout: 120_000 });
     await openDisclosures(page);
     Object.assign(dump, await dumpResult(page));
@@ -346,27 +352,17 @@ for (const s of SCENARIOS) {
       const rec: unknown[] = [];
       for (let i = 0; i < n; i += 1) {
         const c = cards.nth(i);
-        const trigger = c.getByRole("button", { name: /cálculo|calculation/i });
-        await trigger.click();
-        const pop = page.locator("[data-slot='popover-content']:visible");
-        await pop.first().waitFor({ state: "visible", timeout: 10_000 });
-        const detail = await pop.first().innerText();
+        // Feedback round 2 removed the card's "View calculation details"
+        // popover, so the card text is all there is to dump.
         rec.push({
           programId: await c.getAttribute("data-program-id"),
           riskLevel: await c.getAttribute("data-risk-level"),
           text: await c.innerText(),
-          calc: detail,
         });
-        await page.keyboard.press("Escape");
-        await expect(
-          page.locator("[data-slot='popover-content']:visible"),
-        ).toHaveCount(0);
       }
       dump.recommendations = rec;
       dump.recommendation_count =
         (await textsOf(page, "recommendation-count"))[0] ?? null;
-      dump.current_risk =
-        (await textsOf(page, "current-unmatched-risk"))[0] ?? null;
       dump.improve_body = await page.locator("main").innerText();
     }
 
@@ -428,7 +424,7 @@ test("dump geocode_precision", async ({ page }) => {
     .getByRole("link", { name: /^3\./ })
     .click();
   await page.waitForURL("**/es/result");
-  await expect(page.getByTestId("unmatched-risk")).toBeVisible({
+  await expect(page.getByTestId("result-outcome")).toBeVisible({
     timeout: 120_000,
   });
   await page.getByTestId("result-improve").click();
@@ -537,7 +533,7 @@ test("dump en_strict_04", async ({ page }) => {
     .getByRole("link", { name: /^3\./ })
     .click();
   await page.waitForURL("**/en/result");
-  await expect(page.getByTestId("unmatched-risk")).toBeVisible({
+  await expect(page.getByTestId("result-outcome")).toBeVisible({
     timeout: 120_000,
   });
   await openDisclosures(page);
@@ -545,18 +541,11 @@ test("dump en_strict_04", async ({ page }) => {
     resolve(OUT, "en_strict_04.json"),
     JSON.stringify(
       {
-        risk: (await page.getByTestId("unmatched-risk").innerText()).trim(),
-        // The attention alert is gone (§9b item 5); the headline is what the
-        // English side-by-side compares now.
-        chance: (
-          await page.getByTestId("assignment-chance").innerText()
-        ).trim(),
-        headline: (
-          await page.getByTestId("result-headline").innerText()
-        ).trim(),
-        podium: await page.getByTestId("outcome-item").allInnerTexts(),
-        family: await page.getByTestId("family-table").innerText(),
-        detail: await page.getByTestId("detail-table").innerText(),
+        // Feedback round 2 left step 3 with one box: the attention alert, the
+        // two headline figures, the podium and both tables are gone, so the
+        // box is the whole of what the English side-by-side can compare.
+        outcome: (await page.getByTestId("result-outcome").innerText()).trim(),
+        body: (await page.locator("main").innerText()).trim(),
       },
       null,
       1,
