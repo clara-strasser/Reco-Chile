@@ -7,6 +7,34 @@ The app estimates the probability of assignment to each program in a student's w
 > [!IMPORTANT]
 > This is a research and decision-support tool. It is not an official SAE service, does not reproduce every operational detail of the centralized assignment process, and cannot guarantee an admission outcome.
 
+## Run the app
+
+Two processes: the FastAPI backend and the Next.js frontend. Requires Python 3.10+ and Node 20+ with pnpm.
+
+```bash
+# Terminal 1 — API on http://localhost:8000
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn api:app --reload
+```
+
+```bash
+# Terminal 2 — web app
+cd web
+pnpm install
+pnpm dev
+```
+
+Then open <http://localhost:3000/es/student>.
+
+Alternatively, run both in containers:
+
+```bash
+docker compose up --build
+```
+
+Full details — Python version pinning, Windows, Docker specifics — are under [Installation](#installation).
+
 ## Main features
 
 - Build and reorder a wish list directly in the interface.
